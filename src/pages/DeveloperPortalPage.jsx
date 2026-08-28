@@ -193,7 +193,7 @@ export function DeveloperPortalPage() {
       addToast(`Bot Webhook test: HTTP ${res.response_code}`, 'info');
     } catch (err) {
       addToast(err.message || 'Bot Webhook test failed', 'error');
-    } fontally {
+    } finally {
       setTestingBotWebhook(false);
     }
   };
