@@ -1,0 +1,23 @@
+# MarkanM Chat Apache Rewrite Rules for Hostinger Shared Hosting
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Pass Authorization header to PHP (Crucial for Hostinger FastCGI / PHP-FPM)
+  RewriteCond %{HTTP:Authorization} ^(.*)
+  RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
+
+  # 1. Direct API routes to PHP REST API router
+  RewriteRule ^api/v1/(.*)$ backend/index.php [QSA,L]
+  RewriteRule ^api/(.*)$ backend/index.php [QSA,L]
+  RewriteRule ^backend/api/(.*)$ backend/index.php [QSA,L]
+
+  # 2. Serve static files directly if existing
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 3. Fallback all React SPA page routes to index.html
+  RewriteRule ^ index.html [L]
+</IfModule>

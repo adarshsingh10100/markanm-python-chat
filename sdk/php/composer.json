@@ -1,0 +1,20 @@
+{
+  "name": "markanm/bot",
+  "description": "Official PHP SDK for MarkanM Chat Bot Platform",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "MarkanM Developer Team",
+      "email": "developers@markanm.com"
+    }
+  ],
+  "require": {
+    "php": ">=7.4"
+  },
+  "autoload": {
+    "psr-4": {
+      "MarkanM\\Bot\\": "src/"
+    }
+  }
+}

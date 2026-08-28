@@ -1,0 +1,25 @@
+{
+  "name": "@markanm/bot",
+  "version": "0.1.0",
+  "description": "Official Node.js & JavaScript SDK for MarkanM Chat Bot Platform",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "markanm",
+    "bot",
+    "chat",
+    "sdk",
+    "telegram",
+    "discord",
+    "oauth"
+  ],
+  "author": "MarkanM Developer Team <developers@markanm.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/markanm/markanm-js-sdk.git"
+  }
+}
