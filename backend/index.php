@@ -456,6 +456,8 @@ try {
         MessageController::importMessages($matches[1]);
     } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/attachments$#', $path, $matches)) {
         MessageController::uploadAttachment($matches[1]);
+    } else if ($method === 'GET' && ($path === '/api/link-preview' || $path === '/link-preview')) {
+        MessageController::getLinkPreview();
     }
 
     // 17. NOTIFICATION ROUTES

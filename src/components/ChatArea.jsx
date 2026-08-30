@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Smile, Paperclip, X, Link as LinkIcon, Info, Users, MessageSquare } from 'lucide-react';
+import { Send, Smile, Paperclip, X, Link as LinkIcon, Info, Users, MessageSquare, Loader2 } from 'lucide-react';
 import { useChat } from '../context/ChatContext';
 import { useConversationPolling } from '../hooks/useConversationPolling';
+import { chatService } from '../services/chatService';
 import { MessageBubble } from './MessageBubble';
 import { Avatar } from './Avatar';
 
@@ -28,6 +29,11 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
   const [editingMessage, setEditingMessage] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  // WhatsApp-style Live Link Preview state
+  const [activeLinkPreview, setActiveLinkPreview] = useState(null);
+  const [fetchingPreview, setFetchingPreview] = useState(false);
+  const [dismissedUrl, setDismissedUrl] = useState(null);
+
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -45,12 +51,30 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
-  // Handle auto-growing input height
+  // Handle auto-growing input height & live URL detection
   const handleInputChange = (e) => {
-    setInputContent(e.target.value);
+    const text = e.target.value;
+    setInputContent(text);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+
+    // Auto-detect link in pasted or typed text
+    const match = text.match(/(https?:\/\/[^\s]+)/i);
+    if (match) {
+      const url = match[0];
+      if (url !== dismissedUrl && (!activeLinkPreview || activeLinkPreview.url !== url)) {
+        setFetchingPreview(true);
+        chatService.getLinkPreview(url)
+          .then(res => {
+            if (res.preview) setActiveLinkPreview(res.preview);
+          })
+          .catch(() => {})
+          .finally(() => setFetchingPreview(false));
+      }
+    } else {
+      if (!editingMessage) setActiveLinkPreview(null);
     }
   };
 
@@ -61,10 +85,13 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
       editMessage(editingMessage.id, inputContent.trim());
       setEditingMessage(null);
     } else {
-      sendMessage(inputContent.trim(), replyToMessage?.id || null);
+      const metadata = activeLinkPreview ? { link_preview: activeLinkPreview } : null;
+      sendMessage(inputContent.trim(), replyToMessage?.id || null, 'text', metadata);
     }
 
     setInputContent('');
+    setActiveLinkPreview(null);
+    setDismissedUrl(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -108,96 +135,63 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
             src={activeConversation?.avatar_url}
             name={activeConversation?.name}
             size="md"
-            presence={!isGroup ? activeConversation?.counterpart?.presence : null}
           />
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-white truncate flex items-center gap-2">
-              <span className="truncate">{activeConversation?.name}</span>
-            </h2>
+            <h3 className="font-bold text-sm text-white truncate">{activeConversation?.name}</h3>
             <p className="text-xs text-gray-400 truncate">
-              {isGroup ? (
-                `${activeConversation?.members?.length || 0} members`
-              ) : (
-                activeConversation?.counterpart?.presence === 'online' ? (
-                  <span className="text-emerald-400 font-medium">Online</span>
-                ) : (
-                  'Offline'
-                )
-              )}
+              {isGroup
+                ? `${activeConversation?.members_count || 0} members`
+                : activeConversation?.counterpart_status || 'Offline'}
             </p>
           </div>
         </div>
 
-        {/* Action Controls */}
         <div className="flex items-center gap-2">
           {isGroup && (
             <button
-              onClick={() => onOpenInviteModal(activeConversation)}
-              className="p-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all"
-              title="Share Group Invite Link"
+              onClick={onOpenGroupInfo}
+              className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors"
+              title="Group Details"
             >
-              <LinkIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Invite Link</span>
+              <Info className="w-5 h-5" />
             </button>
           )}
-
-          <button
-            onClick={() => onOpenGroupInfo(activeConversation)}
-            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
-            title="Conversation Details"
-          >
-            <Info className="w-5 h-5" />
-          </button>
         </div>
       </div>
 
-      {/* Message List Timeline */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col justify-between">
+      {/* Message Feed */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar space-y-4">
         {loadingMessages ? (
-          <div className="flex-1 flex flex-col justify-center items-center gap-2">
-            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs text-gray-400">Loading messages...</span>
+          <div className="h-full flex items-center justify-center text-gray-500 text-xs font-semibold">
+            Loading chat messages...
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex-1 flex flex-col justify-center items-center text-center text-gray-500 gap-2">
-            <MessageSquare className="w-10 h-10 text-gray-600" />
-            <p className="text-sm font-medium">No messages in this conversation yet.</p>
-            <p className="text-xs text-gray-600">Send a greeting to start the conversation!</p>
+          <div className="h-full flex flex-col items-center justify-center text-gray-500 text-xs text-center">
+            <MessageSquare className="w-8 h-8 text-gray-600 mb-2 opacity-50" />
+            <p>No messages yet. Send a message to start the conversation!</p>
           </div>
         ) : (
-          <div className="flex flex-col">
-            {messages.map(msg => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                onReply={(m) => setReplyToMessage(m)}
-                onEdit={handleStartEdit}
-                onDelete={deleteMessage}
-                onToggleReaction={toggleReaction}
-              />
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
+          messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              onReply={(m) => setReplyToMessage(m)}
+              onEdit={handleStartEdit}
+              onDelete={deleteMessage}
+              onToggleReaction={toggleReaction}
+            />
+          ))
         )}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Typing Indicator Bar */}
-      {activeConversation?.counterpart?.is_typing && (
-        <div className="px-6 py-1 text-xs text-indigo-400 italic flex items-center gap-2 animate-pulse">
-          <span className="w-2 h-2 bg-indigo-400 rounded-full" />
-          <span>{activeConversation?.counterpart?.display_name} is typing...</span>
-        </div>
-      )}
-
-      {/* Input Area Header (Reply / Edit Context) */}
+      {/* Reply Quote Banner */}
       {(replyToMessage || editingMessage) && (
-        <div className="px-6 py-2 bg-indigo-950/60 border-t border-indigo-500/30 flex items-center justify-between text-xs text-indigo-200">
-          <div className="flex items-center gap-2 truncate">
-            {editingMessage ? (
-              <span className="font-semibold text-indigo-400">Editing Message:</span>
-            ) : (
-              <span className="font-semibold text-indigo-400">Replying to {replyToMessage.sender_name}:</span>
-            )}
+        <div className="px-4 py-2 bg-[#131822] border-t border-white/10 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold text-indigo-400 shrink-0">
+              {editingMessage ? 'Editing Message:' : `Replying to @${replyToMessage.sender_name}:`}
+            </span>
             <span className="truncate text-gray-300">
               {editingMessage ? editingMessage.content : replyToMessage.content}
             </span>
@@ -212,6 +206,60 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* WhatsApp-Style Floating Live Link Preview Bar */}
+      {(activeLinkPreview || fetchingPreview) && (
+        <div className="px-4 pt-2">
+          <div className="bg-[#131822] border border-indigo-500/30 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-2xl relative">
+            {fetchingPreview ? (
+              <div className="flex items-center gap-2 text-xs text-indigo-300 py-1">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+                <span>Fetching link preview...</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  {activeLinkPreview.image ? (
+                    <img
+                      src={activeLinkPreview.image}
+                      alt="Link Preview"
+                      className="w-12 h-12 rounded-xl object-cover border border-white/10 shrink-0"
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0 text-indigo-400">
+                      <LinkIcon className="w-5 h-5" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-mono">
+                      {activeLinkPreview.favicon && (
+                        <img src={activeLinkPreview.favicon} alt="" className="w-3 h-3 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                      )}
+                      <span className="truncate">{activeLinkPreview.site_name || activeLinkPreview.url}</span>
+                    </div>
+                    <h4 className="text-xs font-bold text-white truncate">{activeLinkPreview.title}</h4>
+                    {activeLinkPreview.description && (
+                      <p className="text-[11px] text-gray-300 truncate mt-0.5">{activeLinkPreview.description}</p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setDismissedUrl(activeLinkPreview.url);
+                    setActiveLinkPreview(null);
+                  }}
+                  className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 shrink-0"
+                  title="Remove link preview"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -253,7 +301,7 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
             value={inputContent}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Write a message... (Shift+Enter for newline)"
+            placeholder="Write a message or paste link... (Shift+Enter for newline)"
             className="flex-1 bg-transparent border-none text-sm text-white placeholder-gray-500 focus:outline-none resize-none max-h-32 py-2 px-1"
           />
 

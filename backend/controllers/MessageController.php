@@ -715,4 +715,93 @@ class MessageController {
         $fileUrl = '/backend/uploads/attachments/' . $filename;
         jsonResponse(['success' => true, 'url' => $fileUrl]);
     }
+
+    /**
+     * GET /api/link-preview?url=...
+     */
+    public static function getLinkPreview(): void {
+        $url = trim($_GET['url'] ?? '');
+        if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+            jsonError('Invalid URL provided', 400);
+        }
+
+        $scheme = strtolower(parse_url($url, PHP_URL_SCHEME) ?? '');
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            jsonError('Only HTTP/HTTPS URLs supported', 400);
+        }
+
+        $parsedHost = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
+
+        // 1. YouTube Video ID Detection
+        $youtubeId = null;
+        if (preg_match('#(?:youtube\.com/(?:watch\?v=|embed/|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{11})#i', $url, $matches)) {
+            $youtubeId = $matches[1];
+        }
+
+        $preview = [
+            'url' => $url,
+            'title' => '',
+            'description' => '',
+            'image' => '',
+            'site_name' => $parsedHost,
+            'favicon' => "https://www.google.com/s2/favicons?domain={$parsedHost}&sz=64",
+            'is_youtube' => !empty($youtubeId),
+            'youtube_id' => $youtubeId
+        ];
+
+        if (!empty($youtubeId)) {
+            $preview['image'] = "https://img.youtube.com/vi/{$youtubeId}/hqdefault.jpg";
+            $preview['title'] = "YouTube Video";
+            $preview['site_name'] = "YouTube";
+        }
+
+        try {
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_TIMEOUT => 3,
+                CURLOPT_CONNECTTIMEOUT => 2,
+                CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 MarkanMBot/1.0',
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => 0
+            ]);
+
+            $html = curl_exec($ch);
+            curl_close($ch);
+
+            if ($html && strlen($html) > 50) {
+                if (preg_match('#<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']#i', $html, $m)) {
+                    $preview['title'] = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                } else if (preg_match('#<title[^>]*>([^<]+)</title>#i', $html, $m)) {
+                    $preview['title'] = html_entity_decode(trim($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+
+                if (preg_match('#<meta\s+property=["\']og:description["\']\s+content=["\']([^"\']+)["\']#i', $html, $m)) {
+                    $preview['description'] = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                } else if (preg_match('#<meta\s+name=["\']description["\']\s+content=["\']([^"\']+)["\']#i', $html, $m)) {
+                    $preview['description'] = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+
+                if (preg_match('#<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']#i', $html, $m)) {
+                    $preview['image'] = $m[1];
+                }
+
+                if (preg_match('#<meta\s+property=["\']og:site_name["\']\s+content=["\']([^"\']+)["\']#i', $html, $m)) {
+                    $preview['site_name'] = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                }
+            }
+        } catch (Throwable $e) {}
+
+        if (empty($preview['title'])) {
+            $preview['title'] = $parsedHost;
+        }
+
+        jsonResponse([
+            'success' => true,
+            'preview' => $preview
+        ]);
+    }
 }

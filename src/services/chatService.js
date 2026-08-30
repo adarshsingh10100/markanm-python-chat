@@ -113,5 +113,9 @@ export const chatService = {
       method: 'POST',
       body: { messages }
     });
+  },
+
+  async getLinkPreview(url) {
+    return await request(`/api/link-preview?url=${encodeURIComponent(url)}`, { method: 'GET' });
   }
 };
