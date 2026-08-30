@@ -6,7 +6,6 @@ import { useToast } from '../context/ToastContext';
 import { request } from '../services/api';
 import { userService } from '../services/userService';
 import { developerService } from '../services/developerService';
-import { RoadmapModal } from '../components/RoadmapModal';
 import { BlockedUsersTab } from '../components/BlockedUsersTab';
 import { ConnectedAppsTab } from '../components/ConnectedAppsTab';
 
@@ -15,8 +14,7 @@ export function SettingsPage() {
   const { addToast } = useToast();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState('roadmap');
-  const [isRoadmapOpen, setIsRoadmapOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('privacy');
 
   // Privacy states
   const [connectionRequests, setConnectionRequests] = useState('everyone');
@@ -178,16 +176,6 @@ export function SettingsPage() {
         {/* Settings Navigation Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/10 text-xs font-semibold scrollbar-none">
           <button
-            onClick={() => setActiveTab('roadmap')}
-            className={`px-4 py-2.5 rounded-2xl flex items-center gap-2 shrink-0 transition-all ${
-              activeTab === 'roadmap' ? 'bg-indigo-600 text-white font-bold shadow-lg' : 'bg-white/5 text-gray-400 hover:text-white'
-            }`}
-          >
-            <Map className="w-4 h-4 text-purple-400" />
-            <span>Product Progress & Roadmap</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('privacy')}
             className={`px-4 py-2.5 rounded-2xl flex items-center gap-2 shrink-0 transition-all ${
               activeTab === 'privacy' ? 'bg-indigo-600 text-white font-bold shadow-lg' : 'bg-white/5 text-gray-400 hover:text-white'
@@ -238,54 +226,7 @@ export function SettingsPage() {
           </button>
         </div>
 
-        {/* Tab 1: Roadmap & Progress */}
-        {activeTab === 'roadmap' && (
-          <div className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col gap-5">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <span className="text-xs font-extrabold uppercase text-indigo-400 tracking-wider">Product Roadmap Status</span>
-                <h2 className="text-xl font-black text-white mt-0.5">Current: Update 4 of 5 (1 major update remaining)</h2>
-                <p className="text-xs text-gray-400 mt-1">Update 4 — MarkanM Connect Developer Platform & OAuth</p>
-              </div>
-
-              <button
-                onClick={() => setIsRoadmapOpen(true)}
-                className="btn-gradient px-5 py-3 rounded-2xl text-xs font-bold shadow-xl flex items-center gap-2 hover:scale-105 transition-transform"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Open Interactive Roadmap</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2">
-              <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl">
-                <span className="text-[10px] font-bold text-emerald-400 uppercase">Update 1</span>
-                <h4 className="text-xs font-bold text-white mt-1">Foundation</h4>
-                <p className="text-[11px] text-gray-400 mt-1">✓ Completed</p>
-              </div>
-
-              <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl">
-                <span className="text-[10px] font-bold text-emerald-400 uppercase">Update 2</span>
-                <h4 className="text-xs font-bold text-white mt-1">Discover</h4>
-                <p className="text-[11px] text-gray-400 mt-1">✓ Completed</p>
-              </div>
-
-              <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl">
-                <span className="text-[10px] font-bold text-emerald-400 uppercase">Update 3</span>
-                <h4 className="text-xs font-bold text-white mt-1">Experience</h4>
-                <p className="text-[11px] text-gray-400 mt-1">✓ Completed</p>
-              </div>
-
-              <div className="p-4 bg-indigo-600/20 border border-indigo-500/50 rounded-2xl ring-2 ring-indigo-500/30">
-                <span className="text-[10px] font-bold text-indigo-300 uppercase">Update 4</span>
-                <h4 className="text-xs font-bold text-white mt-1">Connect</h4>
-                <p className="text-[11px] text-indigo-400 font-semibold mt-1">● Current</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 2: Privacy Settings */}
+        {/* Tab: Privacy Settings */}
         {activeTab === 'privacy' && (
           <form onSubmit={handleSavePrivacy} className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col gap-5">
             <div>
@@ -549,12 +490,6 @@ export function SettingsPage() {
             </div>
           </div>
         )}
-
-        {/* Interactive Roadmap Modal */}
-        <RoadmapModal
-          isOpen={isRoadmapOpen}
-          onClose={() => setIsRoadmapOpen(false)}
-        />
       </div>
     </div>
   );

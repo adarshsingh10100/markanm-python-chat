@@ -7,7 +7,6 @@ import { connectionService } from '../services/connectionService';
 import { userService } from '../services/userService';
 import { useToast } from '../context/ToastContext';
 import { Avatar } from '../components/Avatar';
-import { ComingSoonSection } from '../components/ComingSoonSection';
 
 export function DashboardPage({ onOpenCreateGroup, onOpenEmailInvite }) {
   const { user } = useAuth();
@@ -264,9 +263,6 @@ export function DashboardPage({ onOpenCreateGroup, onOpenEmailInvite }) {
             </div>
           </div>
         </div>
-
-        {/* Coming Next Future Roadmap Preview */}
-        <ComingSoonSection />
       </div>
     </div>
   );
