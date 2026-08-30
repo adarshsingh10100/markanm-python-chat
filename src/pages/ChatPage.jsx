@@ -26,6 +26,7 @@ import { WhatsAppImportModal } from '../components/WhatsAppImportModal';
 import { GoogleMeetModal } from '../components/GoogleMeetModal';
 import { JumpToDateModal } from '../components/JumpToDateModal';
 import { MessageInfoModal } from '../components/MessageInfoModal';
+import { InAppCallModal } from '../components/InAppCallModal';
 import { formatMessagePreview, formatTime, formatDateDivider, countryFlag } from '../utils/textUtils';
 import { encodeId, decodeId } from '../utils/hashUtils';
 
@@ -62,6 +63,7 @@ export function ChatPage() {
   const [inChatSearchResults, setInChatSearchResults] = useState([]);
   const [isSearchingInChat, setIsSearchingInChat] = useState(false);
   const [selectedInfoMsg, setSelectedInfoMsg] = useState(null);
+  const [activeMeetCallUrl, setActiveMeetCallUrl] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
 
   const touchStartRef = useRef(null);
@@ -413,8 +415,8 @@ export function ChatPage() {
       isJumpModeRef.current = true;
       setUserIsScrolledUp(true);
       
-      const dateStr = createdAt ? createdAt.split(' ')[0] : null;
-      const res = await chatService.getMessages(targetConvId, 0, 0, 150, false, dateStr);
+      // Fetch 300 messages centered around target msgId so target is guaranteed present in DOM
+      const res = await chatService.getMessages(targetConvId, 0, 0, 300, false, '', msgId);
       const msgs = res.messages || [];
 
       if (msgs.length > 0) {
@@ -425,12 +427,12 @@ export function ChatPage() {
           const el = document.getElementById(`msg-${msgId}`);
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-500/20');
-            setTimeout(() => el?.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-500/20'), 3000);
+            el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-500/20', 'rounded-2xl', 'p-1', 'transition-all');
+            setTimeout(() => el?.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-500/20', 'rounded-2xl', 'p-1'), 3500);
           } else if (messagesContainerRef.current) {
             messagesContainerRef.current.scrollTop = 0;
           }
-        }, 50);
+        }, 80);
       }
     } catch (e) {
       addToast('Could not load target message', 'error');
@@ -997,9 +999,10 @@ export function ChatPage() {
                                   type="button"
                                   onClick={() => {
                                     const urlMatch = msg.content.match(/https?:\/\/[^\s]+/);
-                                    if (urlMatch) window.open(urlMatch[0], '_blank');
+                                    const meetUrl = urlMatch ? urlMatch[0] : 'https://meet.google.com/new';
+                                    setActiveMeetCallUrl(meetUrl);
                                   }}
-                                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md"
+                                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
                                 >
                                   <Video className="w-3.5 h-3.5" />
                                   <span>Join Call</span>
@@ -1368,6 +1371,15 @@ export function ChatPage() {
         onClose={() => setSelectedInfoMsg(null)}
         message={selectedInfoMsg}
         userTimezone={userTimezone}
+      />
+      <InAppCallModal
+        isOpen={!!activeMeetCallUrl}
+        onClose={() => setActiveMeetCallUrl(null)}
+        meetUrl={activeMeetCallUrl}
+        onEndCall={() => {
+          handleSendMessage(null, 'call', '🔴 Video Call Ended');
+          setActiveMeetCallUrl(null);
+        }}
       />
     </div>
   );

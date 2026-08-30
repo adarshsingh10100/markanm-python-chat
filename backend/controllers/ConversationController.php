@@ -62,6 +62,7 @@ class ConversationController {
                     $avatarUrl = $cp['avatar_url'];
                     $slug = '@' . $cp['username'];
                     $isTyping = ($cp['typing_conversation_id'] == $conv['id'] && (time() - strtotime($cp['typing_updated_at'] ?? '1970-01-01')) < 6);
+                    $isOnline = ($cp['presence_status'] === 'online') || ((time() - strtotime($cp['last_seen_at'] ?? '1970-01-01')) < 120);
 
                     $counterpart = [
                         'id' => (int)$cp['id'],
@@ -70,6 +71,7 @@ class ConversationController {
                         'avatar_url' => $cp['avatar_url'],
                         'bio' => decodeOutput($cp['bio']),
                         'presence' => $cp['presence_status'] ?: 'offline',
+                        'is_online' => $isOnline,
                         'last_seen_at' => $cp['last_seen_at'],
                         'is_typing' => $isTyping
                     ];

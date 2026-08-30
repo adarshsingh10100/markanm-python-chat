@@ -44,8 +44,9 @@ export const chatService = {
     return await request(`/conversations/${convId}/leave`, { method: 'POST' });
   },
 
-  async getMessages(convId, sinceId = 0, beforeId = 0, limit = 150, isTop = false, dateStr = '') {
+  async getMessages(convId, sinceId = 0, beforeId = 0, limit = 300, isTop = false, dateStr = '', aroundId = 0) {
     let url = `/conversations/${convId}/messages?limit=${limit}&`;
+    if (aroundId > 0) url += `around_id=${aroundId}&`;
     if (isTop) url += `top=1&`;
     if (dateStr) url += `date=${encodeURIComponent(dateStr)}&`;
     if (sinceId > 0) url += `since_id=${sinceId}&`;

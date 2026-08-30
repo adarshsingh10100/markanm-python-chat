@@ -50,11 +50,12 @@ class MessageController {
             jsonError('Access denied.', 403);
         }
 
+        $aroundId = isset($_GET['around_id']) ? (int)$_GET['around_id'] : 0;
         $sinceId = isset($_GET['since_id']) ? (int)$_GET['since_id'] : 0;
         $beforeId = isset($_GET['before_id']) ? (int)$_GET['before_id'] : 0;
         $isTop = isset($_GET['top']) && $_GET['top'] == '1';
         $targetDate = isset($_GET['date']) ? trim($_GET['date']) : '';
-        $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 300) : 150;
+        $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 500) : 300;
 
         $params = ['cid' => $convId];
         $sql = '
@@ -69,7 +70,13 @@ class MessageController {
             WHERE m.conversation_id = :cid
         ';
 
-        if ($isTop) {
+        if ($aroundId > 0) {
+            $minId = max(1, $aroundId - 150);
+            $maxId = $aroundId + 150;
+            $sql .= ' AND m.id >= :min_id AND m.id <= :max_id ORDER BY m.id ASC LIMIT ' . $limit;
+            $params['min_id'] = $minId;
+            $params['max_id'] = $maxId;
+        } else if ($isTop) {
             $sql .= ' ORDER BY m.id ASC LIMIT ' . $limit;
         } else if (!empty($targetDate)) {
             $sql .= ' AND DATE(m.created_at) >= :target_date ORDER BY m.id ASC LIMIT ' . $limit;
@@ -88,7 +95,7 @@ class MessageController {
         $stmt->execute($params);
         $rawMessages = $stmt->fetchAll();
 
-        if ($sinceId == 0 && !$isTop && empty($targetDate)) {
+        if ($sinceId == 0 && !$isTop && empty($targetDate) && $aroundId == 0) {
             $rawMessages = array_reverse($rawMessages);
         }
 
