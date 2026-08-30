@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { MessageSquare, Users, Bell, Home, Settings, LogOut, Sparkles, Compass, Code, Gamepad2, Bot, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { MessageSquare, Users, Bell, Home, Settings, LogOut, Sparkles, Compass, Code, Gamepad2, Bot, PanelLeftClose, PanelLeft, Shield, Globe } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { developerService } from '../services/developerService';
@@ -40,6 +40,17 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
 
   if (isDeveloper) {
     navItems.push({ label: 'Developer Portal', path: '/developers', icon: Code });
+  }
+
+  const role = (user?.role || '').toLowerCase();
+  const uname = (user?.username || '').toLowerCase();
+  const isAdmin = role === 'admin' || role === 'superadmin' || uname === 'gdr' || uname === 'admin' || Number(user?.id) === 1;
+
+  if (isAdmin) {
+    navItems.push(
+      { label: 'Admin Panel', path: '/admin/users', icon: Shield },
+      { label: 'Branding & SEO', path: '/admin/branding', icon: Globe }
+    );
   }
 
   navItems.push(

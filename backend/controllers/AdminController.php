@@ -618,13 +618,108 @@ class AdminController {
 
         $status = strtolower($status) === 'enable' ? 'active' : 'disabled';
 
-        $db->prepare('UPDATE ai_characters SET status = :status WHERE id = :id')->execute(['status' => $status, 'id' => $id]);
+        $db->prepare('UPDATE ai_characters SET is_active = :act WHERE id = :id')
+           ->execute(['act' => ($status === 'active' ? 1 : 0), 'id' => $id]);
 
-        AdminMiddleware::logAudit((int)$admin['id'], "{$status}_character", null, ['character_id' => $id]);
+        AdminMiddleware::logAudit((int)$admin['id'], 'toggle_character_' . $status, $id);
 
         jsonResponse([
             'success' => true,
-            'message' => "Character status set to '{$status}'."
+            'message' => "Character status updated to " . ($status === 'active' ? 'active' : 'disabled') . "."
+        ]);
+    }
+
+    /**
+     * GET /admin/api/branding & /api/public/branding
+     */
+    public static function getBrandingSettings(): void {
+        $db = Database::getConnection();
+        $branding = [
+            'site_title' => 'MarkanM Chat — End-to-End AI & Private Messaging',
+            'site_description' => 'Experience private, end-to-end encrypted messaging, interactive AI anime characters, and real-time chat on MarkanM Chat.',
+            'site_keywords' => 'MarkanM, AI chat, anime character chat, private messaging, end to end encryption',
+            'site_logo_url' => '/assets/logo.png',
+            'site_favicon_url' => '/favicon.svg',
+            'apple_touch_icon_url' => '/apple-touch-icon.png',
+            'og_image_url' => 'https://chat.markanm.com/assets/og-preview.png',
+            'robots_indexing' => 'index, follow'
+        ];
+
+        try {
+            $stmt = $db->prepare('SELECT `key`, value_encrypted FROM app_settings WHERE `key` LIKE "branding_%"');
+            $stmt->execute();
+            $rows = $stmt->fetchAll();
+            foreach ($rows as $r) {
+                $k = str_replace('branding_', '', $r['key']);
+                if (!empty($r['value_encrypted'])) {
+                    $branding[$k] = $r['value_encrypted'];
+                }
+            }
+        } catch (Throwable $e) {}
+
+        jsonResponse(['success' => true, 'branding' => $branding]);
+    }
+
+    /**
+     * POST /admin/api/branding [superadmin]
+     */
+    public static function updateBrandingSettings(): void {
+        $admin = AdminMiddleware::requireSuperAdmin();
+        $db = Database::getConnection();
+        $body = getRequestBody();
+
+        $keys = ['site_title', 'site_description', 'site_keywords', 'site_logo_url', 'site_favicon_url', 'apple_touch_icon_url', 'og_image_url', 'robots_indexing'];
+        foreach ($keys as $k) {
+            if (isset($body[$k])) {
+                $val = trim((string)$body[$k]);
+                try {
+                    $db->prepare('
+                        INSERT INTO app_settings (`key`, value_encrypted) VALUES (:k, :v)
+                        ON DUPLICATE KEY UPDATE value_encrypted = VALUES(value_encrypted)
+                    ')->execute(['k' => 'branding_' . $k, 'v' => $val]);
+                } catch (Throwable $e) {}
+            }
+        }
+
+        AdminMiddleware::logAudit((int)$admin['id'], 'update_branding_settings', null, $body);
+
+        jsonResponse(['success' => true, 'message' => 'Site Branding, Favicon, Logo & SEO settings saved successfully!']);
+    }
+
+    /**
+     * POST /admin/api/branding/upload [superadmin]
+     */
+    public static function uploadBrandingAsset(): void {
+        $admin = AdminMiddleware::requireSuperAdmin();
+
+        if (empty($_FILES['file'])) {
+            jsonError('No file uploaded', 400);
+        }
+
+        $file = $_FILES['file'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico'];
+        if (!in_array($ext, $allowed, true)) {
+            jsonError('Invalid file extension. Allowed: jpg, png, webp, svg, ico', 400);
+        }
+
+        $uploadDir = __DIR__ . '/../uploads/branding/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $filename = 'brand_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        $targetPath = $uploadDir . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+            jsonError('Failed to save uploaded branding asset', 500);
+        }
+
+        $publicUrl = '/backend/uploads/branding/' . $filename;
+        jsonResponse([
+            'success' => true,
+            'url' => $publicUrl,
+            'message' => 'Branding asset uploaded successfully!'
         ]);
     }
 }

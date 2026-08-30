@@ -59,6 +59,8 @@ import { AdminUserDetailPage } from './pages/admin/AdminUserDetailPage';
 import { AdminLogsPage } from './pages/admin/AdminLogsPage';
 import { AdminDatabasePage } from './pages/admin/AdminDatabasePage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
+import { AdminBrandingPage } from './pages/admin/AdminBrandingPage';
+import { SEOHead } from './components/SEOHead';
 
 function ProtectedLayout() {
   const { user, loading, showProfileCompletion } = useAuth();
@@ -138,6 +140,7 @@ function ProtectedLayout() {
               <Route path="/admin/logs" element={<AdminGuard><AdminLogsPage /></AdminGuard>} />
               <Route path="/admin/database" element={<AdminGuard><AdminDatabasePage /></AdminGuard>} />
               <Route path="/admin/settings" element={<AdminGuard><AdminSettingsPage /></AdminGuard>} />
+              <Route path="/admin/branding" element={<AdminGuard><AdminBrandingPage /></AdminGuard>} />
 
               <Route
                 path="/connections"
@@ -190,6 +193,7 @@ export default function App() {
   return (
     <ToastProvider>
       <AuthProvider>
+        <SEOHead />
         <Routes>
           {/* Landing/Home Page — public */}
           <Route path="/" element={<HomePage />} />

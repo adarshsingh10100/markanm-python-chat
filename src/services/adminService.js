@@ -74,5 +74,34 @@ export const adminService = {
     return request(`/admin/api/characters/${id}/${action}`, {
       method: 'POST'
     });
+  },
+
+  async getBranding() {
+    return request('/admin/api/branding');
+  },
+
+  async updateBranding(data) {
+    return request('/admin/api/branding', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async uploadBrandingAsset(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = localStorage.getItem('markanm_token');
+    const res = await fetch('/admin/api/branding/upload', {
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || 'Upload failed');
+    }
+    return data;
   }
 };
