@@ -196,4 +196,42 @@ class Mailer {
             return false;
         }
     }
+
+    /**
+     * Send Password Reset Link Email
+     */
+    public static function sendPasswordResetEmail(string $toEmail, string $displayName, string $resetLink): bool {
+        try {
+            $mail = self::createPHPMailer();
+            $mail->addAddress($toEmail, $displayName);
+            $mail->Subject = "Reset your MarkanM Chat password";
+
+            $mail->Body = '
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"></head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif; background-color: #0B0E14; color: #ffffff; padding: 20px; margin: 0;">
+              <div style="max-width: 500px; margin: 0 auto; background: #131822; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                <div style="text-align: center; margin-bottom: 20px;">
+                  <h2 style="color: #6366F1; margin: 0; font-size: 22px;">MarkanM Chat</h2>
+                  <p style="color: #9CA3AF; font-size: 13px; margin-top: 5px;">Password Reset Request</p>
+                </div>
+                <p style="font-size: 14px; color: #E5E7EB;">Hello <strong>' . htmlspecialchars($displayName) . '</strong>,</p>
+                <p style="font-size: 14px; color: #9CA3AF;">We received a request to reset your password. Click the button below to create a new password. This link expires in <strong>1 hour</strong>.</p>
+                <div style="text-align: center; margin: 28px 0;">
+                  <a href="' . htmlspecialchars($resetLink) . '" style="background: linear-gradient(135deg, #6366F1 0%, #A855F7 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 14px; font-size: 15px; font-weight: bold; display: inline-block; box-shadow: 0 6px 20px rgba(99,102,241,0.45);">
+                    Reset My Password
+                  </a>
+                </div>
+                <p style="font-size: 12px; color: #6B7280; text-align: center;">If you did not request a password reset, you can safely ignore this email. Your account will remain secure.</p>
+              </div>
+            </body>
+            </html>';
+
+            return $mail->send();
+        } catch (Throwable $e) {
+            error_log("PHPMailer Password Reset Error: " . $e->getMessage());
+            return false;
+        }
+    }
 }

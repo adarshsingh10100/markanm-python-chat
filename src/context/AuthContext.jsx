@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showProfileCompletion, setShowProfileCompletion] = useState(false);
 
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('markanm_token');
@@ -19,6 +20,10 @@ export function AuthProvider({ children }) {
       const res = await authService.getMe();
       if (res.user) {
         setUser(res.user);
+        // Show profile completion for Google users who haven't filled in details yet
+        if (res.user.google_id && !res.user.profile_completed) {
+          setShowProfileCompletion(true);
+        }
       } else {
         setUser(null);
       }
@@ -51,15 +56,34 @@ export function AuthProvider({ children }) {
       await authService.logout();
     } finally {
       setUser(null);
+      setShowProfileCompletion(false);
     }
+  };
+
+  const googleLogin = async (credential) => {
+    const res = await authService.googleLogin(credential);
+    setUser(res.user);
+    // If new Google user without profile completion, show the modal
+    if (res.user && (!res.profile_completed || !res.user.profile_completed)) {
+      setShowProfileCompletion(true);
+    }
+    return res;
+  };
+
+  const completeProfile = async (gender, dateOfBirth) => {
+    const res = await authService.completeProfile(gender, dateOfBirth);
+    setUser(prev => prev ? { ...prev, gender, date_of_birth: dateOfBirth, profile_completed: true } : prev);
+    setShowProfileCompletion(false);
+    return res;
   };
 
   const updateUserProfile = (updatedFields) => {
     setUser(prev => prev ? { ...prev, ...updatedFields } : prev);
   };
 
-  // Derived geo/timezone values — automatically updated when user object changes
-  // These come from IP-based geolocation on the backend (ip-api.com)
+  const dismissProfileCompletion = () => setShowProfileCompletion(false);
+
+  // Derived geo/timezone values
   const userTimezone = user?.timezone || 'Asia/Kolkata';
   const userCountryCode = user?.country_code || null;
   const userCountryName = user?.country_name || null;
@@ -68,6 +92,8 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, loading, login, register, logout, checkAuth, updateUserProfile,
+      googleLogin, completeProfile,
+      showProfileCompletion, dismissProfileCompletion,
       userTimezone, userCountryCode, userCountryName, userCity
     }}>
       {children}

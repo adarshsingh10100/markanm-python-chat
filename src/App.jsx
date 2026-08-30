@@ -10,6 +10,9 @@ import { OTPModal } from './components/OTPModal';
 
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ProfileCompletionModal } from './components/ProfileCompletionModal';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChatPage } from './pages/ChatPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
@@ -40,7 +43,7 @@ import {
 } from './pages/embeds/BuiltInEmbedPages';
 
 function ProtectedLayout() {
-  const { user, loading } = useAuth();
+  const { user, loading, showProfileCompletion } = useAuth();
   const location = useLocation();
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [isEmailInviteOpen, setIsEmailInviteOpen] = useState(false);
@@ -139,6 +142,9 @@ function ProtectedLayout() {
             redirectPath={location.pathname}
           />
         )}
+
+        {/* Profile Completion Modal for Google-login users */}
+        <ProfileCompletionModal isOpen={showProfileCompletion} />
       </div>
     </ChatProvider>
   );
@@ -152,6 +158,8 @@ export default function App() {
           {/* Public Auth Routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/join/:code" element={<JoinInvitePage />} />
 
           {/* Update 4 OAuth Authorization Consent Page */}

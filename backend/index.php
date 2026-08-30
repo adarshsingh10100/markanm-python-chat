@@ -145,6 +145,14 @@ try {
         AuthController::logout();
     } else if ($method === 'GET' && $path === '/auth/me') {
         AuthController::me();
+    } else if ($method === 'POST' && $path === '/auth/forgot-password') {
+        AuthController::forgotPassword();
+    } else if ($method === 'POST' && $path === '/auth/reset-password') {
+        AuthController::resetPassword();
+    } else if ($method === 'POST' && $path === '/auth/google') {
+        AuthController::googleLogin();
+    } else if ($method === 'POST' && $path === '/auth/complete-profile') {
+        AuthController::completeProfile();
     }
 
     // 3. EXPERIENCE DIRECTORY & PLATFORM ROUTES

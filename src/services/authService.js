@@ -42,5 +42,25 @@ export const authService = {
 
   async getMe() {
     return await request('/auth/me', { method: 'GET' });
+  },
+
+  async forgotPassword(email) {
+    return await request('/auth/forgot-password', { method: 'POST', body: { email } });
+  },
+
+  async resetPassword(token, password) {
+    return await request('/auth/reset-password', { method: 'POST', body: { token, password } });
+  },
+
+  async googleLogin(credential) {
+    const res = await request('/auth/google', { method: 'POST', body: { credential } });
+    if (res.token) {
+      localStorage.setItem('markanm_token', res.token);
+    }
+    return res;
+  },
+
+  async completeProfile(gender, date_of_birth) {
+    return await request('/auth/complete-profile', { method: 'POST', body: { gender, date_of_birth } });
   }
 };

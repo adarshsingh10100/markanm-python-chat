@@ -18,9 +18,11 @@ class AuthMiddleware {
         }
 
         $db = Database::getConnection();
+
+        // Only select columns guaranteed to exist in the base schema
+        // Geo columns (country_code, city, etc.) are optional extras added via migration
         $stmt = $db->prepare('
-            SELECT s.token, u.id, u.display_name, u.username, u.email, u.avatar_url, u.bio, u.is_verified,
-                   u.country_code, u.country_name, u.city, u.timezone, u.last_ip, u.created_at
+            SELECT s.token, u.id, u.display_name, u.username, u.email, u.avatar_url, u.bio, u.is_verified, u.created_at
             FROM sessions s
             JOIN users u ON s.user_id = u.id
             WHERE s.token = :token AND s.expires_at > NOW()
@@ -33,6 +35,14 @@ class AuthMiddleware {
             jsonError('Session expired or invalid token.', 401);
         }
 
-        return $user;
+        // Optionally fetch extra profile fields that may not exist on all deployments
+        $extras = [];
+        try {
+            $extStmt = $db->prepare('SELECT country_code, country_name, city, timezone, last_ip, gender, date_of_birth, profile_completed, google_id, is_bot FROM users WHERE id = :id LIMIT 1');
+            $extStmt->execute(['id' => $user['id']]);
+            $extras = $extStmt->fetch() ?: [];
+        } catch (Throwable $e) {}
+
+        return array_merge($user, $extras);
     }
 }
