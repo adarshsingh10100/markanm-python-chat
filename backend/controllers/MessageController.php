@@ -603,4 +603,39 @@ class MessageController {
 
         jsonResponse(['success' => true, 'results' => $results]);
     }
+
+    /**
+     * POST /api/conversations/{id}/attachments
+     */
+    public static function uploadAttachment(string $identifier): void {
+        $convId = self::resolveConvId($identifier);
+        $currentUser = AuthMiddleware::authenticate();
+
+        if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+            jsonError('No file uploaded or upload failed.', 400);
+        }
+
+        $file = $_FILES['file'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowedExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'avif', 'heic', 'pdf', 'mp4', 'mov'];
+
+        if (!in_array($ext, $allowedExts)) {
+            jsonError('File extension not allowed.', 400);
+        }
+
+        $uploadDir = __DIR__ . '/../uploads/attachments/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        $filename = 'att_' . time() . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+        $targetPath = $uploadDir . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+            jsonError('Failed to save uploaded file.', 500);
+        }
+
+        $fileUrl = '/backend/uploads/attachments/' . $filename;
+        jsonResponse(['success' => true, 'url' => $fileUrl]);
+    }
 }

@@ -346,6 +346,8 @@ try {
         MessageController::updateTypingStatus($matches[1]);
     } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/import-messages$#', $path, $matches)) {
         MessageController::importMessages($matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/attachments$#', $path, $matches)) {
+        MessageController::uploadAttachment($matches[1]);
     }
 
     // 17. NOTIFICATION ROUTES

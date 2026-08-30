@@ -1245,7 +1245,7 @@ export function ChatPage() {
                     onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
                     className="p-2.5 hover:bg-white/10 rounded-xl flex items-center gap-2.5 text-white font-semibold text-xs sm:text-sm"
                   >
-                    <Image className="w-4 h-4 text-blue-400" />
+                    <ImageIcon className="w-4 h-4 text-blue-400" />
                     <span>📷 Upload Image (All Formats)</span>
                   </button>
 
