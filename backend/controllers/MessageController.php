@@ -342,10 +342,10 @@ class MessageController {
             jsonError('Message not found or unauthorized to delete.', 403);
         }
 
-        $update = $db->prepare('UPDATE messages SET is_deleted = 1, content = "" WHERE id = :id');
+        $update = $db->prepare('UPDATE messages SET is_deleted = 1, content = "🚫 This message was deleted" WHERE id = :id');
         $update->execute(['id' => $messageId]);
 
-        jsonResponse(['success' => true, 'message' => 'Message deleted']);
+        jsonResponse(['success' => true, 'message' => 'Message deleted for everyone']);
     }
 
     /**
@@ -625,14 +625,14 @@ class MessageController {
 
         $uploadDir = __DIR__ . '/../uploads/attachments/';
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+            @mkdir($uploadDir, 0777, true);
         }
 
         $filename = 'att_' . time() . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
         $targetPath = $uploadDir . $filename;
 
         if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
-            jsonError('Failed to save uploaded file.', 500);
+            jsonError('Failed to save uploaded file to server directory.', 500);
         }
 
         $fileUrl = '/backend/uploads/attachments/' . $filename;

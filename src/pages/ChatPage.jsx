@@ -614,6 +614,15 @@ export function ChatPage() {
   const renderRichMessage = (msg) => {
     const text = msg.content || '';
 
+    // 0. Deleted Message
+    if (msg.is_deleted || text === '🚫 This message was deleted') {
+      return (
+        <p className="italic text-gray-400 text-xs sm:text-sm flex items-center gap-1.5 opacity-80 font-medium my-0.5">
+          <span>🚫 This message was deleted</span>
+        </p>
+      );
+    }
+
     // 1. Poll Message
     let pollId = null;
     if (msg.type === 'poll' || text.startsWith('{"poll_id"')) {
@@ -640,7 +649,10 @@ export function ChatPage() {
       if (urlStr.startsWith('http://') || urlStr.startsWith('https://') || urlStr.startsWith('data:') || urlStr.startsWith('blob:')) {
         return urlStr;
       }
-      const cleanPath = urlStr.startsWith('/') ? urlStr : '/' + urlStr;
+      let cleanPath = urlStr.startsWith('/') ? urlStr : '/' + urlStr;
+      if (!cleanPath.startsWith('/backend/') && cleanPath.startsWith('/uploads/')) {
+        cleanPath = '/backend' + cleanPath;
+      }
       return `${window.location.origin}${cleanPath}`;
     };
 
@@ -1497,16 +1509,24 @@ export function ChatPage() {
 
           {(contextMenu.msg?.sender_id === user?.id || contextMenu.msg?.is_mine) && (
             <button
-              onClick={() => {
-                chatService.deleteMessage(contextMenu.msg.id);
-                allMessagesRef.current = allMessagesRef.current.filter(m => m.id !== contextMenu.msg.id);
-                updateDisplayedWindow(false);
+              onClick={async () => {
+                const targetMsgId = contextMenu.msg.id;
                 setContextMenu(null);
+                try {
+                  await chatService.deleteMessage(targetMsgId);
+                  allMessagesRef.current = allMessagesRef.current.map(m =>
+                    m.id === targetMsgId ? { ...m, is_deleted: 1, content: '🚫 This message was deleted' } : m
+                  );
+                  setDisplayedMessages([...allMessagesRef.current]);
+                  addToast('Message deleted for everyone', 'success');
+                } catch (e) {
+                  addToast(e.message || 'Failed to delete message', 'error');
+                }
               }}
-              className="p-2 hover:bg-red-600/20 hover:text-red-400 rounded-xl flex items-center gap-2.5 text-left transition-all text-red-400"
+              className="p-2 hover:bg-red-600/20 hover:text-red-400 rounded-xl flex items-center gap-2.5 text-left transition-all text-red-400 font-semibold"
             >
               <Trash2 className="w-4 h-4" />
-              <span>Delete Message</span>
+              <span>Delete for Everyone</span>
             </button>
           )}
         </div>
