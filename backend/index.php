@@ -6,6 +6,29 @@ require_once __DIR__ . '/middleware/CORSMiddleware.php';
 // Handle CORS Pre-flight & Headers
 CORSMiddleware::handle();
 
+// Dynamic Autoloader for Controllers & Middleware to handle Linux file-case differences
+spl_autoload_register(function ($className) {
+    $baseDirs = [
+        __DIR__ . '/controllers/',
+        __DIR__ . '/middleware/',
+        __DIR__ . '/config/',
+        __DIR__ . '/helpers/'
+    ];
+    foreach ($baseDirs as $dir) {
+        $variations = [
+            $dir . $className . '.php',
+            $dir . strtolower($className) . '.php',
+            $dir . ucfirst(strtolower($className)) . '.php'
+        ];
+        foreach ($variations as $file) {
+            if (file_exists($file)) {
+                require_once $file;
+                return;
+            }
+        }
+    }
+});
+
 require_once __DIR__ . '/controllers/AuthController.php';
 require_once __DIR__ . '/controllers/UserController.php';
 require_once __DIR__ . '/controllers/ConnectionController.php';
