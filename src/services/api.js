@@ -1,4 +1,4 @@
-// Central API Request Wrapper
+// Central API Request Wrapper with Network Failure & Weak Internet Handling
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/backend/api';
 
@@ -27,13 +27,33 @@ export async function request(endpoint, options = {}) {
     config.body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  } catch (netErr) {
+    const isOffline = !navigator.onLine;
+    const errorMsg = isOffline
+      ? '⚠️ You are currently offline. Please check your internet connection.'
+      : '📡 Weak internet connection detected. Retrying automatically...';
+
+    // Notify NetworkStatusBanner component
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('network-status-change', {
+        detail: { isOffline, isWeak: !isOffline, message: errorMsg }
+      }));
+    }
+
+    const err = new Error(errorMsg);
+    err.isNetworkError = true;
+    err.isOffline = isOffline;
+    throw err;
+  }
+
   const rawText = await response.text();
   let data = {};
   try {
     data = JSON.parse(rawText);
   } catch (e) {
-    console.error('[API Parse Error] Raw Server Response:', rawText);
     const textSnippet = rawText.replace(/<[^>]*>?/gm, '').trim().substring(0, 150);
     data = {
       success: false,

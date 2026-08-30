@@ -61,6 +61,7 @@ import { AdminDatabasePage } from './pages/admin/AdminDatabasePage';
 import { AdminSettingsPage } from './pages/admin/AdminSettingsPage';
 import { AdminBrandingPage } from './pages/admin/AdminBrandingPage';
 import { SEOHead } from './components/SEOHead';
+import { NetworkStatusBanner } from './components/NetworkStatusBanner';
 
 function ProtectedLayout() {
   const { user, loading, showProfileCompletion } = useAuth();
@@ -88,6 +89,8 @@ function ProtectedLayout() {
 
   return (
     <ChatProvider>
+      <SEOHead />
+      <NetworkStatusBanner />
       <div className="flex flex-col h-screen w-screen bg-[#0B0E14] overflow-hidden">
         {/* App-Wide Admin Impersonation Banner */}
         <ImpersonationBanner />
