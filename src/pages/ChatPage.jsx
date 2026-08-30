@@ -30,6 +30,7 @@ import { InAppCallModal } from '../components/InAppCallModal';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import { ImageSendConfirmModal } from '../components/ImageSendConfirmModal';
 import { playSendSound, playReceiveSound, initAudioOnUserInteraction } from '../utils/soundUtils';
+import { messageCacheService } from '../services/messageCacheService';
 import { formatMessagePreview, formatTime, formatDateDivider, countryFlag } from '../utils/textUtils';
 import { encodeId, decodeId } from '../utils/hashUtils';
 
@@ -249,6 +250,15 @@ export function ChatPage() {
 
   const loadMessages = async (cid) => {
     if (!cid || (typeof cid === 'number' && (isNaN(cid) || cid <= 0))) return;
+
+    // Instant offline local cache hydration (0ms delay)
+    if (allMessagesRef.current.length === 0) {
+      const cached = messageCacheService.get(cid);
+      if (cached && cached.length > 0) {
+        allMessagesRef.current = cached;
+        setDisplayedMessages([...cached]);
+      }
+    }
     
     // Do NOT overwrite user's Jump Mode view or history reading view during background polling
     if ((isJumpModeRef.current || userIsScrolledUp) && allMessagesRef.current.length > 0) {
@@ -285,6 +295,9 @@ export function ChatPage() {
 
       const merged = [...fetchedMsgs, ...filteredPending];
       allMessagesRef.current = merged;
+
+      // Update offline local cache
+      messageCacheService.set(cid, merged);
 
       // Detect unread messages & play receive audio chime
       if (!isInitialLoadRef.current && merged.length > prevMessagesCountRef.current) {
@@ -1157,10 +1170,9 @@ export function ChatPage() {
                           <div
                             onClick={() => {
                               const targetId = msg.reply_to_id || msg.reply_to?.id;
-                              const targetEl = document.getElementById(`msg-${targetId}`);
-                              targetEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              targetEl?.classList.add('ring-2', 'ring-indigo-500');
-                              setTimeout(() => targetEl?.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+                              if (targetId) {
+                                handleJumpToSearchMessage(targetId);
+                              }
                             }}
                             className="p-2 mb-2 rounded-xl bg-black/40 border-l-4 border-indigo-400 text-xs cursor-pointer hover:bg-black/60 transition-all text-gray-200 text-left"
                           >

@@ -28,7 +28,13 @@ export async function request(endpoint, options = {}) {
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-  const data = await response.json().catch(() => ({ success: false, error: 'Invalid JSON response from server' }));
+  const rawText = await response.text();
+  let data = {};
+  try {
+    data = JSON.parse(rawText);
+  } catch (e) {
+    data = { success: false, error: response.ok ? 'Unexpected response format' : `Server Error (${response.status})` };
+  }
 
   if (!response.ok || data.success === false) {
     const errorMsg = data.error || data.message || `Request failed with status ${response.status}`;

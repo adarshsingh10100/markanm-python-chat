@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Users, ShieldCheck, LogOut, UserMinus } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, Users, ShieldCheck, LogOut, UserMinus, Camera, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { chatService } from '../services/chatService';
@@ -11,11 +11,42 @@ export function GroupInfoModal({ isOpen, onClose, conversation }) {
   const { selectConversation, fetchConversations } = useChat();
   const { addToast } = useToast();
 
+  const iconInputRef = useRef(null);
+  const [updatingIcon, setUpdatingIcon] = useState(false);
+
   if (!isOpen || !conversation) return null;
 
   const isGroup = conversation.type === 'group';
   const myRole = conversation.my_role || 'member';
   const isOwnerOrAdmin = ['owner', 'admin'].includes(myRole);
+
+  const handleGroupIconUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUpdatingIcon(true);
+    addToast('Uploading group icon...', 'info');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', 'image');
+
+      const uploaded = await chatService.uploadAttachment(conversation.id, formData);
+      if (uploaded && uploaded.url) {
+        await chatService.updateGroup(conversation.id, {
+          name: conversation.name,
+          description: conversation.description,
+          icon_url: uploaded.url
+        });
+        addToast('Group icon updated!', 'success');
+        fetchConversations(true);
+      }
+    } catch (err) {
+      addToast(err.message || 'Failed to update group icon', 'error');
+    } finally {
+      setUpdatingIcon(false);
+    }
+  };
 
   const handleLeaveGroup = async () => {
     if (!window.confirm('Are you sure you want to leave this group?')) return;
@@ -51,11 +82,35 @@ export function GroupInfoModal({ isOpen, onClose, conversation }) {
         </div>
 
         <div className="mt-4 flex flex-col items-center gap-3">
-          <Avatar src={conversation.avatar_url} name={conversation.name} size="xl" />
+          <div className="relative group/avatar cursor-pointer" onClick={() => isOwnerOrAdmin && iconInputRef.current?.click()}>
+            <Avatar src={conversation.icon_url || conversation.avatar_url} name={conversation.name} size="xl" />
+            {isOwnerOrAdmin && (
+              <div className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+                <Camera className="w-6 h-6 text-white" />
+              </div>
+            )}
+            <input
+              type="file"
+              ref={iconInputRef}
+              accept="image/*"
+              className="hidden"
+              onChange={handleGroupIconUpload}
+            />
+          </div>
+
           <div className="text-center">
             <h4 className="text-lg font-bold text-white">{conversation.name}</h4>
             {conversation.description && (
               <p className="text-xs text-gray-400 mt-1 max-w-xs">{conversation.description}</p>
+            )}
+            {isOwnerOrAdmin && (
+              <button
+                type="button"
+                onClick={() => iconInputRef.current?.click()}
+                className="mt-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-indigo-300 rounded-lg text-[11px] font-bold transition-all border border-white/10"
+              >
+                {updatingIcon ? 'Uploading...' : '📷 Change Group Icon'}
+              </button>
             )}
           </div>
         </div>
