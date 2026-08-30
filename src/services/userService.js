@@ -23,5 +23,9 @@ export const userService = {
 
   async inviteByEmail(email) {
     return await request('/users/invite-email', { method: 'POST', body: { email } });
+  },
+
+  async getBots() {
+    return await request('/bots', { method: 'GET' });
   }
 };

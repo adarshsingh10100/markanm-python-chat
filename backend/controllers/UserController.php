@@ -343,4 +343,22 @@ class UserController {
             'max_invites' => 2
         ]);
     }
+
+    /**
+     * GET /api/bots
+     * Fetch all system AI bots for group addition
+     */
+    public static function getBots(): void {
+        AuthMiddleware::authenticate();
+        $db = Database::getConnection();
+
+        $bots = [];
+        try {
+            $stmt = $db->prepare('SELECT id AS user_id, display_name, username, avatar_url, bio FROM users WHERE is_bot = 1');
+            $stmt->execute();
+            $bots = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {}
+
+        jsonResponse(['success' => true, 'bots' => $bots]);
+    }
 }

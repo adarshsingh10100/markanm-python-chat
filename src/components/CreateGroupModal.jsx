@@ -3,6 +3,7 @@ import { X, Users, Check, Sparkles } from 'lucide-react';
 import { connectionService } from '../services/connectionService';
 import { chatService } from '../services/chatService';
 import { useToast } from '../context/ToastContext';
+import { userService } from '../services/userService';
 import { useChat } from '../context/ChatContext';
 import { Avatar } from './Avatar';
 
@@ -13,6 +14,7 @@ export function CreateGroupModal({ isOpen, onClose }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [connections, setConnections] = useState([]);
+  const [bots, setBots] = useState([]);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -20,8 +22,14 @@ export function CreateGroupModal({ isOpen, onClose }) {
   useEffect(() => {
     if (isOpen) {
       setLoading(true);
-      connectionService.getConnections()
-        .then(res => setConnections(res.connected || []))
+      Promise.all([
+        connectionService.getConnections(),
+        userService.getBots()
+      ])
+        .then(([connRes, botsRes]) => {
+          setConnections(connRes.connected || []);
+          setBots(botsRes.bots || []);
+        })
         .catch(() => addToast('Failed to fetch connections for group creation', 'error'))
         .finally(() => setLoading(false));
     } else {
@@ -109,42 +117,81 @@ export function CreateGroupModal({ isOpen, onClose }) {
 
           <div>
             <label className="block text-xs font-semibold text-gray-300 mb-2">
-              Add Connected Members ({selectedUserIds.length} selected)
+              Add Members ({selectedUserIds.length} selected)
             </label>
             <div className="max-h-48 overflow-y-auto divide-y divide-white/5 bg-white/5 border border-white/10 rounded-2xl p-2">
               {loading ? (
                 <div className="p-4 text-center text-xs text-gray-400">Loading connections...</div>
-              ) : connections.length === 0 ? (
+              ) : connections.length === 0 && bots.length === 0 ? (
                 <div className="p-4 text-center text-xs text-gray-500">
                   No connections available yet. Connect with people first!
                 </div>
               ) : (
-                connections.map(user => {
-                  const isSelected = selectedUserIds.includes(user.user_id);
-                  return (
-                    <button
-                      key={user.user_id}
-                      type="button"
-                      onClick={() => toggleUserSelection(user.user_id)}
-                      className={`w-full flex items-center justify-between p-2 rounded-xl transition-all ${
-                        isSelected ? 'bg-indigo-600/20 text-white' : 'hover:bg-white/5 text-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar src={user.avatar_url} name={user.display_name} size="sm" />
-                        <div className="text-left">
-                          <p className="text-xs font-semibold text-white">{user.display_name}</p>
-                          <p className="text-[10px] text-gray-400">@{user.username}</p>
+                <>
+                  {connections.map(user => {
+                    const isSelected = selectedUserIds.includes(user.user_id);
+                    return (
+                      <button
+                        key={user.user_id}
+                        type="button"
+                        onClick={() => toggleUserSelection(user.user_id)}
+                        className={`w-full flex items-center justify-between p-2 rounded-xl transition-all ${
+                          isSelected ? 'bg-indigo-600/20 text-white' : 'hover:bg-white/5 text-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar src={user.avatar_url} name={user.display_name} size="sm" />
+                          <div className="text-left">
+                            <p className="text-xs font-semibold text-white">{user.display_name}</p>
+                            <p className="text-[10px] text-gray-400">@{user.username}</p>
+                          </div>
                         </div>
-                      </div>
-                      <div className={`w-5 h-5 rounded-lg border flex items-center justify-center ${
-                        isSelected ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-white/20'
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3" />}
-                      </div>
-                    </button>
-                  );
-                })
+                        <div className={`w-5 h-5 rounded-lg border flex items-center justify-center ${
+                          isSelected ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-white/20'
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  
+                  {bots.length > 0 && (
+                    <div className="pt-2 mt-2 border-t border-white/10">
+                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider px-2 mb-1 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" /> System Bots
+                      </p>
+                      {bots.map(bot => {
+                        const isSelected = selectedUserIds.includes(bot.user_id);
+                        return (
+                          <button
+                            key={bot.user_id}
+                            type="button"
+                            onClick={() => toggleUserSelection(bot.user_id)}
+                            className={`w-full flex items-center justify-between p-2 rounded-xl transition-all ${
+                              isSelected ? 'bg-indigo-600/20 text-white' : 'hover:bg-white/5 text-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Avatar src={bot.avatar_url} name={bot.display_name} size="sm" />
+                              <div className="text-left">
+                                <p className="text-xs font-semibold text-white flex items-center gap-1">
+                                  {bot.display_name}
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[8px] font-bold tracking-wide border border-indigo-500/30">BOT</span>
+                                </p>
+                                <p className="text-[10px] text-gray-400">@{bot.username}</p>
+                              </div>
+                            </div>
+                            <div className={`w-5 h-5 rounded-lg border flex items-center justify-center ${
+                              isSelected ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-white/20'
+                            }`}>
+                              {isSelected && <Check className="w-3 h-3" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

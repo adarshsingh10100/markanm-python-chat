@@ -87,6 +87,39 @@ try {
         BotPlatformController::sendRoomMessage($matches[1]);
     } else if ($method === 'POST' && $path === '/bot/v1/polling') {
         BotPlatformController::polling();
+    } else if ($method === 'GET' && $path === '/api/developer/docs') {
+        BotPlatformController::getApiDocs();
+    } else if ($method === 'GET' && $path === '/migrate-bots') {
+        $db = Database::getConnection();
+        
+        try {
+            // Add is_bot column if it doesn't exist
+            $db->exec('ALTER TABLE users ADD COLUMN is_bot TINYINT(1) NOT NULL DEFAULT 0');
+        } catch (Throwable $e) {}
+
+        // Insert System Bots
+        $bots = [
+            ['username' => 'assistant', 'name' => 'MarkanM AI Assistant', 'email' => 'assistant@markanm.com'],
+            ['username' => 'translator', 'name' => 'Translator Bot', 'email' => 'translator@markanm.com'],
+            ['username' => 'codebot', 'name' => 'Dev Code Helper', 'email' => 'codebot@markanm.com'],
+            ['username' => 'pollbot', 'name' => 'Interactive Poll Bot', 'email' => 'pollbot@markanm.com']
+        ];
+        
+        foreach ($bots as $bot) {
+            $stmt = $db->prepare('SELECT id FROM users WHERE username = :uname');
+            $stmt->execute(['uname' => $bot['username']]);
+            if (!$stmt->fetch()) {
+                $ins = $db->prepare('INSERT INTO users (display_name, username, email, password_hash, is_bot, is_verified, avatar_url) VALUES (:name, :uname, :email, :pass, 1, 1, :avatar)');
+                $ins->execute([
+                    'name' => $bot['name'],
+                    'uname' => $bot['username'],
+                    'email' => $bot['email'],
+                    'pass' => password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT),
+                    'avatar' => "https://api.dicebear.com/7.x/bottts/svg?seed=" . urlencode($bot['username'])
+                ]);
+            }
+        }
+        jsonResponse(['success' => true, 'message' => 'Bots migration completed successfully']);
     } else if ($method === 'POST' && $path === '/developer/bots') {
         BotPlatformController::createBot();
     } else if ($method === 'POST' && preg_match('#^/developer/bots/([0-9]+)/rotate-token$#', $path, $matches)) {
@@ -246,6 +279,8 @@ try {
     // 10. USER & PROFILE ROUTES
     else if ($method === 'GET' && $path === '/users/search') {
         UserController::search();
+    } else if ($method === 'GET' && $path === '/bots') {
+        UserController::getBots();
     } else if ($method === 'GET' && preg_match('#^/users/@([a-zA-Z0-9_]+)$#', $path, $matches)) {
         UserController::getByUsername($matches[1]);
     } else if ($method === 'GET' && preg_match('#^/users/profile$#', $path)) {

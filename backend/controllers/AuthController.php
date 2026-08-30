@@ -258,9 +258,14 @@ class AuthController {
         TrackingController::logActivity('login', (int)$user['id']);
 
         // Fetch updated geo info for response
-        $geoStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
-        $geoStmt->execute(['uid' => $user['id']]);
-        $geoRow = $geoStmt->fetch();
+        $geoRow = [];
+        try {
+            $geoStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
+            $geoStmt->execute(['uid' => $user['id']]);
+            $geoRow = $geoStmt->fetch() ?: [];
+        } catch (Throwable $e) {
+            // Ignore if geo columns don't exist in schema yet
+        }
 
         jsonResponse([
             'success' => true,
@@ -326,9 +331,12 @@ class AuthController {
 
         // Re-fetch geo so timezone is always fresh after logActivity may have updated it
         $db = Database::getConnection();
-        $freshStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
-        $freshStmt->execute(['uid' => $user['id']]);
-        $fresh = $freshStmt->fetch();
+        $fresh = [];
+        try {
+            $freshStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
+            $freshStmt->execute(['uid' => $user['id']]);
+            $fresh = $freshStmt->fetch() ?: [];
+        } catch (Throwable $e) {}
 
         jsonResponse([
             'success' => true,

@@ -118,9 +118,40 @@ export function GroupInfoModal({ isOpen, onClose, conversation }) {
         {/* Group Members List */}
         {isGroup && (
           <div className="mt-6">
-            <h5 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
-              Group Members ({conversation.members?.length || 0})
-            </h5>
+            <div className="flex items-center justify-between mb-2">
+              <h5 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
+                Group Members ({conversation.members?.length || 0})
+              </h5>
+              {isOwnerOrAdmin && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/backend/index.php?endpoint=/bots');
+                      const data = await res.json();
+                      if (data.bots && data.bots.length > 0) {
+                        const bot = window.prompt("Enter the exact username of the bot to add:\\n" + data.bots.map(b => '@' + b.username).join(', '));
+                        if (bot) {
+                          const cleanBot = bot.replace('@', '');
+                          const targetBot = data.bots.find(b => b.username === cleanBot);
+                          if (targetBot) {
+                            await chatService.addMember(conversation.id, targetBot.user_id);
+                            addToast('Bot added successfully!', 'success');
+                            fetchConversations(true);
+                          } else {
+                            addToast('Bot not found', 'error');
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      addToast('Failed to load bots', 'error');
+                    }
+                  }}
+                  className="text-[10px] bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 px-2 py-1 rounded"
+                >
+                  + Add Bot
+                </button>
+              )}
+            </div>
             <div className="max-h-48 overflow-y-auto divide-y divide-white/5 bg-white/5 border border-white/10 rounded-2xl p-2">
               {conversation.members?.map(m => (
                 <div key={m.user_id} className="flex items-center justify-between p-2">
@@ -129,6 +160,7 @@ export function GroupInfoModal({ isOpen, onClose, conversation }) {
                     <div>
                       <p className="text-xs font-semibold text-white flex items-center gap-1">
                         <span>{m.display_name}</span>
+                        {m.is_bot && <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[8px] font-bold tracking-wide border border-indigo-500/30">BOT</span>}
                         {m.role === 'owner' && <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />}
                       </p>
                       <p className="text-[10px] text-gray-400">@{m.username}</p>
