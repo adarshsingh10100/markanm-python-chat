@@ -26,7 +26,7 @@ import { WhatsAppImportModal } from '../components/WhatsAppImportModal';
 import { GoogleMeetModal } from '../components/GoogleMeetModal';
 import { JumpToDateModal } from '../components/JumpToDateModal';
 import { MessageInfoModal } from '../components/MessageInfoModal';
-import { formatMessagePreview, formatTime, countryFlag } from '../utils/textUtils';
+import { formatMessagePreview, formatTime, formatDateDivider, countryFlag } from '../utils/textUtils';
 import { encodeId, decodeId } from '../utils/hashUtils';
 
 export function ChatPage() {
@@ -384,6 +384,47 @@ export function ChatPage() {
       }
     } catch (e) {
       addToast('Could not load target date messages', 'error');
+    }
+  };
+
+  const handleJumpToSearchMessage = async (msgId, createdAt) => {
+    setIsInChatSearchOpen(false);
+    setInChatSearchQuery('');
+    
+    let targetEl = document.getElementById(`msg-${msgId}`);
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetEl.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-500/20');
+      setTimeout(() => targetEl?.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-500/20'), 3000);
+      return;
+    }
+
+    try {
+      addToast('Loading target message...', 'info');
+      isJumpModeRef.current = true;
+      setUserIsScrolledUp(true);
+      
+      const dateStr = createdAt ? createdAt.split(' ')[0] : null;
+      const res = await chatService.getMessages(targetConvId, 0, 0, 150, false, dateStr);
+      const msgs = res.messages || [];
+
+      if (msgs.length > 0) {
+        allMessagesRef.current = msgs;
+        setDisplayedMessages([...msgs]);
+
+        setTimeout(() => {
+          const el = document.getElementById(`msg-${msgId}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-500/20');
+            setTimeout(() => el?.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-500/20'), 3000);
+          } else if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = 0;
+          }
+        }, 50);
+      }
+    } catch (e) {
+      addToast('Could not load target message', 'error');
     }
   };
 
@@ -796,17 +837,7 @@ export function ChatPage() {
                       inChatSearchResults.map(res => (
                         <button
                           key={res.id}
-                          onClick={() => {
-                            const targetEl = document.getElementById(`msg-${res.id}`);
-                            if (targetEl) {
-                              targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                              targetEl.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-500/20');
-                              setTimeout(() => targetEl.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-500/20'), 3000);
-                            } else {
-                              addToast('Message is further up in history. Scroll up to load.', 'info');
-                            }
-                            setIsInChatSearchOpen(false);
-                          }}
+                          onClick={() => handleJumpToSearchMessage(res.id, res.created_at)}
                           className="p-2.5 hover:bg-white/10 rounded-xl flex items-center justify-between gap-3 text-left transition-all border border-white/5"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -840,12 +871,29 @@ export function ChatPage() {
               }}
               className="flex-1 overflow-y-auto p-4 sm:p-6 flex flex-col gap-4 sm:gap-5 relative"
             >
-              {displayedMessages.map((msg) => {
-                const isMe = msg.sender_id === user?.id || msg.is_mine;
-                const isActivityMsg = msg.content?.includes('Started Activity:') || msg.content?.includes('Session #SES_');
+              {(() => {
+                let lastDateStr = null;
+                return displayedMessages.map((msg) => {
+                  const isMe = msg.sender_id === user?.id || msg.is_mine;
+                  const isActivityMsg = msg.content?.includes('Started Activity:') || msg.content?.includes('Session #SES_');
+                  
+                  const msgDateObj = msg.created_at ? new Date(msg.created_at) : new Date();
+                  const currentDateStr = msgDateObj.toDateString();
+                  const showDateDivider = currentDateStr !== lastDateStr;
+                  lastDateStr = currentDateStr;
 
-                return (
-                  <div key={msg.id} className={`flex gap-3 max-w-[92%] sm:max-w-[80%] md:max-w-[70%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}>
+                  return (
+                    <React.Fragment key={msg.id}>
+                      {showDateDivider && (
+                        <div className="flex justify-center my-3 sticky top-2 z-10">
+                          <span className="px-3.5 py-1 bg-[#131822]/90 backdrop-blur-md border border-white/10 rounded-full text-[11px] font-bold text-indigo-300 shadow-md flex items-center gap-1.5">
+                            <Calendar className="w-3 h-3 text-indigo-400" />
+                            <span>{formatDateDivider(msg.created_at, userTimezone)}</span>
+                          </span>
+                        </div>
+                      )}
+
+                      <div className={`flex gap-3 max-w-[92%] sm:max-w-[80%] md:max-w-[70%] ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}>
                     {!isMe && (
                       <Avatar
                         src={msg.sender?.avatar_url}
@@ -1008,11 +1056,13 @@ export function ChatPage() {
                             </span>
                           )}
                         </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </React.Fragment>
                 );
-              })}
+              });
+            })()}
               <div ref={messagesEndRef} />
             </div>
 

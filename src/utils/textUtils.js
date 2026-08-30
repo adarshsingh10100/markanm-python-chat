@@ -112,6 +112,44 @@ export function formatDate(dateStr, timezone = 'Asia/Kolkata') {
 }
 
 /**
+ * Format date divider bubble for chat timeline (WhatsApp / Telegram style)
+ * Returns "Today", "Yesterday", weekday name ("Monday"), or "Aug 29, 2026".
+ */
+export function formatDateDivider(dateStr, timezone = 'Asia/Kolkata') {
+  const date = parseServerDate(dateStr);
+  if (!date) return '';
+  const tz = timezone || 'Asia/Kolkata';
+
+  const now = new Date();
+  const todayLocal = now.toLocaleDateString('en-US', { timeZone: tz });
+  const msgLocal = date.toLocaleDateString('en-US', { timeZone: tz });
+
+  if (todayLocal === msgLocal) {
+    return 'Today';
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const yestLocal = yesterday.toLocaleDateString('en-US', { timeZone: tz });
+  if (yestLocal === msgLocal) {
+    return 'Yesterday';
+  }
+
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays > 0 && diffDays < 7) {
+    return date.toLocaleDateString('en-US', { timeZone: tz, weekday: 'long' });
+  }
+
+  return date.toLocaleDateString('en-US', {
+    timeZone: tz,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
+/**
  * Get a flag emoji for a country code (e.g. 'IN' → '🇮🇳')
  * Uses Unicode regional indicator symbol letters
  *
