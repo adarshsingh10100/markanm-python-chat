@@ -219,7 +219,39 @@ class AuthController {
 
         if (empty($identifier) || empty($password)) {
             jsonError('Username/email and password are required.', 422);
-        }        $db = Database::getConnection();
+        }
+        $db = Database::getConnection();
+        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $identLower = strtolower($identifier);
+
+        // Ensure login_attempts table exists
+        try {
+            $db->exec('
+                CREATE TABLE IF NOT EXISTS login_attempts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    ip_address VARCHAR(45) NOT NULL,
+                    identifier VARCHAR(191) NOT NULL,
+                    attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_rate_limit (ip_address, identifier, attempted_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ');
+        } catch (Throwable $e) {}
+
+        // Check failed attempts within last 10 minutes
+        try {
+            $rateStmt = $db->prepare('
+                SELECT COUNT(*) 
+                FROM login_attempts 
+                WHERE (ip_address = :ip OR identifier = :ident) 
+                  AND attempted_at > DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+            ');
+            $rateStmt->execute(['ip' => $ipAddress, 'ident' => $identLower]);
+            $failedAttempts = (int)$rateStmt->fetchColumn();
+
+            if ($failedAttempts >= 8) {
+                jsonError('Too many failed login attempts. Account locked for 15 minutes for security.', 429);
+            }
+        } catch (Throwable $e) {}
 
         // Query guaranteed core columns first
         $user = null;
@@ -230,15 +262,26 @@ class AuthController {
                 WHERE username = :id_user OR email = :id_email
                 LIMIT 1
             ');
-            $stmt->execute(['id_user' => strtolower($identifier), 'id_email' => strtolower($identifier)]);
+            $stmt->execute(['id_user' => $identLower, 'id_email' => $identLower]);
             $user = $stmt->fetch();
         } catch (Throwable $e) {
             jsonError('Database query error: ' . $e->getMessage(), 500);
         }
 
         if (!$user || empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
+            try {
+                $failStmt = $db->prepare('INSERT INTO login_attempts (ip_address, identifier) VALUES (:ip, :ident)');
+                $failStmt->execute(['ip' => $ipAddress, 'ident' => $identLower]);
+            } catch (Throwable $e) {}
+
             jsonError('Invalid credentials.', 401);
         }
+
+        // Clear previous failed attempts on success
+        try {
+            $clearStmt = $db->prepare('DELETE FROM login_attempts WHERE ip_address = :ip OR identifier = :ident');
+            $clearStmt->execute(['ip' => $ipAddress, 'ident' => $identLower]);
+        } catch (Throwable $e) {}
 
         // Fetch optional profile fields safely
         $optFields = ['avatar_url' => null, 'bio' => '', 'is_verified' => 1];
@@ -334,6 +377,9 @@ class AuthController {
             $stmt->execute(['token' => $token]);
 
             if ($logoutUserId) {
+                try {
+                    $db->prepare("UPDATE user_presence SET status = 'offline', last_seen_at = NOW() WHERE user_id = :uid")->execute(['uid' => $logoutUserId]);
+                } catch (Throwable $e) {}
                 TrackingController::logActivity('logout', $logoutUserId);
             }
         }

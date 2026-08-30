@@ -16,7 +16,8 @@ spl_autoload_register(function ($className) {
         __DIR__ . '/controllers/',
         __DIR__ . '/middleware/',
         __DIR__ . '/config/',
-        __DIR__ . '/helpers/'
+        __DIR__ . '/helpers/',
+        __DIR__ . '/services/'
     ];
     foreach ($baseDirs as $dir) {
         $variations = [
@@ -64,7 +65,9 @@ require_once __DIR__ . '/controllers/PublicApiController.php';
 // Update 5 Controllers (Experiences + Sessions + Bots + Platform Ecosystem)
 require_once __DIR__ . '/controllers/ExperienceController.php';
 require_once __DIR__ . '/controllers/BotController.php';
-require_once __DIR__ . '/controllers/BotPlatformController.php';
+// Update 6 Controllers (Character AI Platform)
+require_once __DIR__ . '/controllers/CharacterController.php';
+require_once __DIR__ . '/controllers/AdminController.php';
 
 // Extract URI path or endpoint query parameter
 $requestUri = $_GET['endpoint'] ?? parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '/';
@@ -87,6 +90,8 @@ try {
     // 1. BOT PLATFORM & REST API V1 ROUTES
     if ($method === 'GET' && $path === '/bot/v1/me') {
         BotPlatformController::getMe();
+    } else if ($method === 'POST' && ($path === '/presence/heartbeat' || $path === '/api/presence/heartbeat')) {
+        UserController::heartbeat();
     } else if ($method === 'POST' && preg_match('#^/bot/v1/rooms/([a-zA-Z0-9_]+)/messages$#', $path, $matches)) {
         BotPlatformController::sendRoomMessage($matches[1]);
     } else if ($method === 'POST' && $path === '/bot/v1/polling') {
@@ -94,6 +99,10 @@ try {
     } else if ($method === 'GET' && $path === '/api/developer/docs') {
         BotPlatformController::getApiDocs();
     } else if ($method === 'GET' && $path === '/migrate-bots') {
+        $user = AuthMiddleware::authenticate();
+        if (($user['role'] ?? '') !== 'admin') {
+            jsonError('Access denied. Admin authorization required.', 403);
+        }
         $db = Database::getConnection();
         
         try {
@@ -157,6 +166,43 @@ try {
         AuthController::googleLogin();
     } else if ($method === 'POST' && $path === '/auth/complete-profile') {
         AuthController::completeProfile();
+    }
+
+    // 2.5 CHARACTER AI PLATFORM ROUTES
+    else if ($method === 'GET' && $path === '/characters') {
+        CharacterController::getCatalog();
+    } else if ($method === 'GET' && ($path === '/characters/my-characters' || $path === '/api/characters/my-characters')) {
+        CharacterController::getMyCharacters();
+    } else if ($method === 'GET' && $path === '/characters/search') {
+        CharacterController::getCatalog();
+    } else if ($method === 'POST' && $path === '/characters') {
+        CharacterController::create();
+    } else if ($method === 'PUT' && preg_match('#^/characters/([0-9]+)$#', $path, $matches)) {
+        CharacterController::updateCharacter((int)$matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/characters/([0-9]+)/retrain$#', $path, $matches)) {
+        CharacterController::retrainCharacter((int)$matches[1]);
+    } else if ($method === 'DELETE' && preg_match('#^/characters/([0-9]+)$#', $path, $matches)) {
+        CharacterController::deleteCharacter((int)$matches[1]);
+    } else if ($method === 'POST' && $path === '/characters/chat-reply') {
+        CharacterController::generateChatReply();
+    } else if ($method === 'POST' && $path === '/admin/characters/import-anilist') {
+        CharacterController::importAniListBatch();
+    } else if ($method === 'GET' && preg_match('#^/characters/([a-zA-Z0-9_-]+)$#', $path, $matches)) {
+        CharacterController::getBySlug($matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/characters/([a-zA-Z0-9_-]+)/start-chat$#', $path, $matches)) {
+        CharacterController::startChat($matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/characters/([0-9]+)/favorite$#', $path, $matches)) {
+        CharacterController::toggleFavorite($matches[1]);
+    } else if ($method === 'GET' && preg_match('#^/characters/([0-9]+)/memories$#', $path, $matches)) {
+        CharacterController::getMemories($matches[1]);
+    } else if ($method === 'GET' && preg_match('#^/characters/([0-9]+)/images$#', $path, $matches)) {
+        CharacterController::getCharacterImages($matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/characters/([0-9]+)/images$#', $path, $matches)) {
+        CharacterController::uploadCharacterImage($matches[1]);
+    } else if ($method === 'GET' && $path === '/admin/character-images') {
+        CharacterController::getAdminImageModeration();
+    } else if ($method === 'POST' && preg_match('#^/admin/character-images/([0-9]+)$#', $path, $matches)) {
+        CharacterController::updateAdminImageStatus($matches[1]);
     }
 
     // 3. EXPERIENCE DIRECTORY & PLATFORM ROUTES
@@ -340,6 +386,15 @@ try {
         TrackingController::getActivityLogs();
     }
 
+    // SETTINGS / AI KEYS ROUTES
+    else if ($method === 'GET' && ($path === '/settings/ai-keys' || $path === '/api/settings/ai-keys')) {
+        UserController::getAiKeys();
+    } else if ($method === 'POST' && ($path === '/settings/ai-keys' || $path === '/api/settings/ai-keys')) {
+        UserController::saveAiKey();
+    } else if ($method === 'DELETE' && preg_match('#^/(?:api/)?settings/ai-keys/([a-zA-Z0-9_]+)$#', $path, $matches)) {
+        UserController::deleteAiKey($matches[1]);
+    }
+
     // 14. CONNECTION ROUTES
     else if ($method === 'GET' && $path === '/connections') {
         ConnectionController::list();
@@ -374,6 +429,10 @@ try {
         ConversationController::removeMember($matches[1], (int)$matches[2]);
     } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/leave$#', $path, $matches)) {
         ConversationController::leaveGroup($matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/clear$#', $path, $matches)) {
+        ConversationController::clearForUser($matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/delete-everyone$#', $path, $matches)) {
+        ConversationController::deleteForEveryone($matches[1]);
     }
 
     // 16. MESSAGE ROUTES
@@ -389,6 +448,8 @@ try {
         MessageController::deleteMessage((int)$matches[1]);
     } else if ($method === 'POST' && preg_match('#^/messages/([0-9]+)/reactions$#', $path, $matches)) {
         MessageController::toggleReaction((int)$matches[1]);
+    } else if ($method === 'GET' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/counterpart-status$#', $path, $matches)) {
+        ConversationController::getCounterpartStatus($matches[1]);
     } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/typing$#', $path, $matches)) {
         MessageController::updateTypingStatus($matches[1]);
     } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/import-messages$#', $path, $matches)) {
@@ -415,6 +476,37 @@ try {
         InviteController::joinGroup($matches[1]);
     } else if ($method === 'POST' && preg_match('#^/invites/([0-9]+)/disable$#', $path, $matches)) {
         InviteController::disableInvite((int)$matches[1]);
+    }
+
+    // 19. ADMIN PANEL API ROUTES
+    else if ($method === 'GET' && ($path === '/admin/api/stats' || $path === '/admin/stats')) {
+        AdminController::getStats();
+    } else if ($method === 'GET' && ($path === '/admin/api/users' || $path === '/admin/users')) {
+        AdminController::getUsers();
+    } else if ($method === 'GET' && preg_match('#^/(?:admin/api/|admin/)users/([0-9]+)$#', $path, $matches)) {
+        AdminController::getUserDetail((int)$matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)users/([0-9]+)/suspend$#', $path, $matches)) {
+        AdminController::suspendUser((int)$matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)users/([0-9]+)/ban$#', $path, $matches)) {
+        AdminController::banUser((int)$matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)users/([0-9]+)/restore$#', $path, $matches)) {
+        AdminController::restoreUser((int)$matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)users/([0-9]+)/impersonate$#', $path, $matches)) {
+        AdminController::impersonateUser((int)$matches[1]);
+    } else if ($method === 'POST' && ($path === '/admin/api/impersonate/end' || $path === '/impersonate/end')) {
+        AdminController::endImpersonation();
+    } else if ($method === 'GET' && ($path === '/admin/api/logs/activity' || $path === '/admin/logs/activity')) {
+        AdminController::getActivityLogs();
+    } else if ($method === 'GET' && ($path === '/admin/api/logs/security' || $path === '/admin/logs/security')) {
+        AdminController::getSecurityLogs();
+    } else if ($method === 'GET' && ($path === '/admin/api/database/tables' || $path === '/admin/database/tables')) {
+        AdminController::getDatabaseTables();
+    } else if ($method === 'GET' && preg_match('#^/(?:admin/api/|admin/)database/tables/([a-zA-Z0-9_]+)$#', $path, $matches)) {
+        AdminController::getDatabaseTableRows($matches[1]);
+    } else if ($method === 'PUT' && ($path === '/admin/api/settings/ai-keys' || $path === '/admin/settings/ai-keys')) {
+        AdminController::rotateAiKey();
+    } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)characters/([0-9]+)/(disable|enable)$#', $path, $matches)) {
+        AdminController::toggleCharacterStatus((int)$matches[1], $matches[2]);
     }
 
     else {

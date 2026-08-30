@@ -37,17 +37,49 @@ foreach ($possibleEnvPaths as $envPath) {
 }
 
 // Database Credentials Constants (overridable via .env or server environment)
-if (!defined('DB_HOST')) define('DB_HOST', getenv('DB_HOST') ?: $_ENV['DB_HOST'] ?: $_SERVER['DB_HOST'] ?: 'localhost');
-if (!defined('DB_PORT')) define('DB_PORT', getenv('DB_PORT') ?: $_ENV['DB_PORT'] ?: $_SERVER['DB_PORT'] ?: '3306');
-if (!defined('DB_NAME')) define('DB_NAME', getenv('DB_NAME') ?: $_ENV['DB_NAME'] ?: $_SERVER['DB_NAME'] ?: 'u200853583_chatmarkanmdb');
-if (!defined('DB_USER')) define('DB_USER', getenv('DB_USER') ?: $_ENV['DB_USER'] ?: $_SERVER['DB_USER'] ?: 'u200853583_rajbhhadvachat');
-if (!defined('DB_PASS')) define('DB_PASS', getenv('DB_PASS') ?: $_ENV['DB_PASS'] ?: $_SERVER['DB_PASS'] ?: 'GDR@Ayushi@Markanm@Bhhadva@10100@18110$');
+if (!defined('DB_HOST')) define('DB_HOST', getenv('DB_HOST') ?: ($_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? 'localhost'));
+if (!defined('DB_PORT')) define('DB_PORT', getenv('DB_PORT') ?: ($_ENV['DB_PORT'] ?? $_SERVER['DB_PORT'] ?? '3306'));
+if (!defined('DB_NAME')) define('DB_NAME', getenv('DB_NAME') ?: ($_ENV['DB_NAME'] ?? $_SERVER['DB_NAME'] ?? 'u200853583_chatmarkanmdb'));
+if (!defined('DB_USER')) define('DB_USER', getenv('DB_USER') ?: ($_ENV['DB_USER'] ?? $_SERVER['DB_USER'] ?? 'u200853583_rajbhhadvachat'));
+
+$dbPass = getenv('DB_PASS') ?: ($_ENV['DB_PASS'] ?? $_SERVER['DB_PASS'] ?? '');
+if (!defined('DB_PASS')) {
+    if (empty($dbPass)) {
+        throw new RuntimeException("Configuration Error: Required environment variable 'DB_PASS' is missing.");
+    }
+    define('DB_PASS', $dbPass);
+}
 
 // App Settings
 if (!defined('APP_NAME')) define('APP_NAME', 'MarkanM Chat');
-if (!defined('APP_URL')) define('APP_URL', getenv('APP_URL') ?: $_ENV['APP_URL'] ?: 'https://chat.markanm.com');
-if (!defined('GOOGLE_CLIENT_ID')) define('GOOGLE_CLIENT_ID', getenv('GOOGLE_CLIENT_ID') ?: $_ENV['GOOGLE_CLIENT_ID'] ?: '794034958283-kaegi75d0iu7kuinp1f8gm27aqilphbo.apps.googleusercontent.com');
-if (!defined('GOOGLE_CLIENT_SECRET')) define('GOOGLE_CLIENT_SECRET', getenv('GOOGLE_CLIENT_SECRET') ?: $_ENV['GOOGLE_CLIENT_SECRET'] ?: '');
+if (!defined('APP_URL')) define('APP_URL', getenv('APP_URL') ?: ($_ENV['APP_URL'] ?? 'https://chat.markanm.com'));
+if (!defined('GOOGLE_CLIENT_ID')) define('GOOGLE_CLIENT_ID', getenv('GOOGLE_CLIENT_ID') ?: ($_ENV['GOOGLE_CLIENT_ID'] ?? '794034958283-kaegi75d0iu7kuinp1f8gm27aqilphbo.apps.googleusercontent.com'));
+if (!defined('GOOGLE_CLIENT_SECRET')) define('GOOGLE_CLIENT_SECRET', getenv('GOOGLE_CLIENT_SECRET') ?: ($_ENV['GOOGLE_CLIENT_SECRET'] ?? ''));
+
+$sarvamKey = getenv('SARVAM_API_KEY') ?: ($_ENV['SARVAM_API_KEY'] ?? $_SERVER['SARVAM_API_KEY'] ?? '');
+if (!defined('SARVAM_API_KEY')) {
+    if (empty($sarvamKey)) {
+        throw new RuntimeException("Configuration Error: Required environment variable 'SARVAM_API_KEY' is missing.");
+    }
+    define('SARVAM_API_KEY', $sarvamKey);
+}
+
+$groqKey = getenv('GROQ_API_KEY') ?: ($_ENV['GROQ_API_KEY'] ?? $_SERVER['GROQ_API_KEY'] ?? '');
+if (!defined('GROQ_API_KEY')) {
+    if (empty($groqKey)) {
+        throw new RuntimeException("Configuration Error: Required environment variable 'GROQ_API_KEY' is missing.");
+    }
+    define('GROQ_API_KEY', $groqKey);
+}
+
+$appEncKey = getenv('APP_ENCRYPTION_KEY') ?: ($_ENV['APP_ENCRYPTION_KEY'] ?? $_SERVER['APP_ENCRYPTION_KEY'] ?? '');
+if (!defined('APP_ENCRYPTION_KEY')) {
+    if (empty($appEncKey)) {
+        throw new RuntimeException("Configuration Error: Required environment variable 'APP_ENCRYPTION_KEY' is missing.");
+    }
+    define('APP_ENCRYPTION_KEY', $appEncKey);
+}
+define('DEFAULT_AI_PROVIDER', getenv('DEFAULT_AI_PROVIDER') ?: ($_ENV['DEFAULT_AI_PROVIDER'] ?? 'groq'));
 define('UPLOAD_DIR', __DIR__ . '/../uploads/');
 define('UPLOAD_URL_PREFIX', '/backend/uploads/');
 define('MAX_UPLOAD_SIZE', 5 * 1024 * 1024); // 5MB limit

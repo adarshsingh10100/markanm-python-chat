@@ -51,7 +51,7 @@ export function ChatProvider({ children }) {
     }
   }, [user, fetchConversations]);
 
-  // Load active conversation details & initial messages
+  // Load active conversation details only (messages loaded by ChatPage)
   const selectConversation = useCallback(async (convId) => {
     if (!convId) {
       setActiveConversationId(null);
@@ -61,28 +61,18 @@ export function ChatProvider({ children }) {
     }
 
     setActiveConversationId(convId);
-    setLoadingMessages(true);
     setReplyToMessage(null);
 
     try {
-      const [detailsRes, messagesRes] = await Promise.all([
-        chatService.getConversationDetails(convId),
-        chatService.getMessages(convId, 0, 0)
-      ]);
-
+      const detailsRes = await chatService.getConversationDetails(convId);
       if (detailsRes.conversation) {
         setActiveConversation(detailsRes.conversation);
-      }
-      if (messagesRes.messages) {
-        setMessages(messagesRes.messages);
       }
 
       // Mark local conversation as read
       setConversations(prev => prev.map(c => c.id === convId ? { ...c, unread_count: 0 } : c));
     } catch (err) {
       addToast(err.message || 'Failed to open conversation', 'error');
-    } finally {
-      setLoadingMessages(false);
     }
   }, [addToast]);
 
@@ -171,6 +161,23 @@ export function ChatProvider({ children }) {
     }
   }, [user, addToast]);
 
+  const updateCounterpartStatus = useCallback((status) => {
+    if (!status) return;
+    setActiveConversation(prev => {
+      if (!prev || !prev.counterpart) return prev;
+      return {
+        ...prev,
+        counterpart: {
+          ...prev.counterpart,
+          is_online: status.is_online,
+          presence: status.presence,
+          is_typing: status.is_typing,
+          last_seen_at: status.last_seen_at
+        }
+      };
+    });
+  }, []);
+
   return (
     <ChatContext.Provider value={{
       conversations,
@@ -188,7 +195,8 @@ export function ChatProvider({ children }) {
       sendMessage,
       editMessage,
       deleteMessage,
-      toggleReaction
+      toggleReaction,
+      updateCounterpartStatus
     }}>
       {children}
     </ChatContext.Provider>

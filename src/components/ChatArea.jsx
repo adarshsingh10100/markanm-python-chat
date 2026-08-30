@@ -20,7 +20,8 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
     deleteMessage,
     toggleReaction,
     fetchConversations,
-    setMessages
+    setMessages,
+    updateCounterpartStatus
   } = useChat();
 
   const [inputContent, setInputContent] = useState('');
@@ -35,7 +36,8 @@ export function ChatArea({ onOpenInviteModal, onOpenGroupInfo }) {
     activeConvId: activeConversationId,
     messages,
     setMessages,
-    fetchConversations
+    fetchConversations,
+    updateCounterpartStatus
   });
 
   // Auto-scroll to bottom on new messages

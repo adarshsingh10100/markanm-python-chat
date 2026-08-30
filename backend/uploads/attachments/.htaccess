@@ -1,0 +1,6 @@
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+AddType text/plain .svg .html .htm .php .phtml
+Options -ExecCGI
+RemoveHandler .php .phtml .php3 .php4 .php5 .pht

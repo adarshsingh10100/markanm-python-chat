@@ -6,6 +6,14 @@ require_once __DIR__ . '/../helpers/Mailer.php';
 class UserController {
 
     /**
+     * POST /presence/heartbeat
+     */
+    public static function heartbeat(): void {
+        AuthMiddleware::authenticate();
+        jsonResponse(['success' => true]);
+    }
+
+    /**
      * GET /api/users/search?q=...
      */
     public static function search(): void {
@@ -218,9 +226,9 @@ class UserController {
         }
 
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg');
-        $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'heic', 'avif'];
+        $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'avif'];
         if (!in_array($ext, $allowedExts)) {
-            jsonError('Invalid image format. Allowed formats: JPEG, PNG, WEBP, GIF, SVG.', 400);
+            jsonError('Invalid image format. Allowed formats: JPEG, PNG, WEBP, GIF, HEIC, AVIF.', 400);
         }
 
         $uploadDir = UPLOAD_DIR;
@@ -264,9 +272,9 @@ class UserController {
         }
 
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg');
-        $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'heic', 'avif'];
+        $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'avif'];
         if (!in_array($ext, $allowedExts)) {
-            jsonError('Invalid image format. Allowed formats: JPEG, PNG, WEBP, GIF, SVG.', 400);
+            jsonError('Invalid image format. Allowed formats: JPEG, PNG, WEBP, GIF, HEIC, AVIF.', 400);
         }
 
         $uploadDir = UPLOAD_DIR;
@@ -360,5 +368,179 @@ class UserController {
         } catch (Throwable $e) {}
 
         jsonResponse(['success' => true, 'bots' => $bots]);
+    }
+
+    private static function maskApiKey(string $key): string {
+        $clean = trim($key);
+        $len = strlen($clean);
+        if ($len <= 8) {
+            return '****';
+        }
+        $prefix = substr($clean, 0, 3);
+        $suffix = substr($clean, -4);
+        return $prefix . '...' . $suffix;
+    }
+
+    /**
+     * GET /api/settings/ai-keys
+     */
+    public static function getAiKeys(): void {
+        $db = Database::getConnection();
+
+        try {
+            $db->exec('
+                CREATE TABLE IF NOT EXISTS user_ai_keys (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    provider ENUM("groq","sarvam") NOT NULL,
+                    api_key_encrypted TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_user_provider (user_id, provider),
+                    INDEX idx_user_id (user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ');
+        } catch (Throwable $e) {}
+
+        $stmt = $db->prepare('SELECT provider, api_key_encrypted, updated_at FROM user_ai_keys WHERE user_id = :uid');
+        $stmt->execute(['uid' => $user['id']]);
+        $rows = $stmt->fetchAll();
+
+        require_once __DIR__ . '/../helpers/CryptoHelper.php';
+
+        $keys = [];
+        foreach ($rows as $r) {
+            $masked = '****';
+            try {
+                $decrypted = CryptoHelper::decrypt($r['api_key_encrypted']);
+                $masked = self::maskApiKey($decrypted);
+            } catch (Throwable $e) {}
+
+            $keys[$r['provider']] = [
+                'has_key' => true,
+                'masked' => $masked,
+                'updated_at' => $r['updated_at']
+            ];
+        }
+
+        jsonResponse([
+            'success' => true,
+            'keys' => [
+                'groq' => $keys['groq'] ?? ['has_key' => false, 'masked' => null],
+                'sarvam' => $keys['sarvam'] ?? ['has_key' => false, 'masked' => null]
+            ]
+        ]);
+    }
+
+    /**
+     * POST /api/settings/ai-keys
+     */
+    public static function saveAiKey(): void {
+        $user = AuthMiddleware::authenticate();
+        $userId = (int)$user['id'];
+
+        // Rate-limit test calls: max 5 per minute per user
+        $lastSaveKey = 'rate_ai_key_save_' . $userId;
+        $saves = $_SESSION[$lastSaveKey] ?? [];
+        $now = time();
+        $recentSaves = array_filter($saves, fn($t) => ($now - $t) < 60);
+        if (count($recentSaves) >= 5) {
+            jsonError('Too many key test attempts. Please wait a minute before trying again.', 429);
+        }
+        $recentSaves[] = $now;
+        $_SESSION[$lastSaveKey] = $recentSaves;
+
+        $body = getRequestBody();
+        $provider = strtolower(trim($body['provider'] ?? ''));
+        $apiKey = trim($body['api_key'] ?? '');
+
+        if (!in_array($provider, ['groq', 'sarvam'], true)) {
+            jsonError('Invalid provider. Allowed values: groq, sarvam.', 400);
+        }
+
+        if (empty($apiKey)) {
+            jsonError('API key cannot be empty.', 400);
+        }
+
+        // Test call verification
+        require_once __DIR__ . '/../helpers/GroqProvider.php';
+        require_once __DIR__ . '/../helpers/SarvamProvider.php';
+        require_once __DIR__ . '/../helpers/CryptoHelper.php';
+
+        $testMessages = [['role' => 'user', 'content' => 'hi']];
+        $testOptions = [
+            'api_key_override' => $apiKey,
+            'max_tokens' => 5
+        ];
+
+        try {
+            if ($provider === 'groq') {
+                $groq = new GroqProvider();
+                $groq->generateResponse($testMessages, $testOptions);
+            } else {
+                $sarvam = new SarvamProvider();
+                $sarvam->generateResponse($testMessages, $testOptions);
+            }
+        } catch (Throwable $t) {
+            jsonError("API key verification failed: " . $t->getMessage(), 400);
+        }
+
+        // Encrypt & Upsert
+        $encrypted = CryptoHelper::encrypt($apiKey);
+        $db = Database::getConnection();
+
+        try {
+            $db->exec('
+                CREATE TABLE IF NOT EXISTS user_ai_keys (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    provider ENUM("groq","sarvam") NOT NULL,
+                    api_key_encrypted TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uniq_user_provider (user_id, provider),
+                    INDEX idx_user_id (user_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            ');
+        } catch (Throwable $e) {}
+
+        $stmt = $db->prepare('
+            INSERT INTO user_ai_keys (user_id, provider, api_key_encrypted, updated_at)
+            VALUES (:uid, :prov, :enc, NOW())
+            ON DUPLICATE KEY UPDATE api_key_encrypted = :enc2, updated_at = NOW()
+        ');
+        $stmt->execute([
+            'uid' => $userId,
+            'prov' => $provider,
+            'enc' => $encrypted,
+            'enc2' => $encrypted
+        ]);
+
+        jsonResponse([
+            'success' => true,
+            'message' => ucfirst($provider) . ' API key verified and saved securely!',
+            'masked' => self::maskApiKey($apiKey)
+        ]);
+    }
+
+    /**
+     * DELETE /api/settings/ai-keys/{provider}
+     */
+    public static function deleteAiKey(string $provider): void {
+        $user = AuthMiddleware::authenticate();
+        $provider = strtolower(trim($provider));
+
+        if (!in_array($provider, ['groq', 'sarvam'], true)) {
+            jsonError('Invalid provider.', 400);
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('DELETE FROM user_ai_keys WHERE user_id = :uid AND provider = :prov');
+        $stmt->execute(['uid' => $user['id'], 'prov' => $provider]);
+
+        jsonResponse([
+            'success' => true,
+            'message' => ucfirst($provider) . ' key removed.'
+        ]);
     }
 }

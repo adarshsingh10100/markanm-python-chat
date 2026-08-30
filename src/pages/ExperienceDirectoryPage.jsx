@@ -37,29 +37,80 @@ export function ExperienceDirectoryPage() {
       const res = await experienceService.getDirectory(selectedCat, searchQuery, selectedFilter);
       let list = res.experiences || [];
 
-      // Ensure Compatibility Test is present
-      const hasCompat = list.some(e => e.slug === 'compatibility-test');
-      if (!hasCompat) {
-        list.unshift({
+      // New Interactive Quick Games List
+      const newGames = [
+        {
           id: 99,
           slug: 'compatibility-test',
           name: 'Compatibility Test',
           tagline: 'Discover how compatible you and your friend are in Life & Love!',
           icon_url: 'https://api.iconify.design/twemoji:sparkling-heart.svg',
           banner_url: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=1200&q=80',
-          description: 'Answer synchronized life & lifestyle questions with your chat partner without seeing answers until the end, then reveal your compatibility report & graphs!',
+          description: 'Answer synchronized questions in chat with your partner to reveal your mutual compatibility score & answer breakdown!',
           category: 'Social',
-          embed_url: '/experiences/embed/compatibility-test',
           developer_username: 'gdr',
           status: 'published',
           total_users: 2450,
-          total_sessions: 890,
           rating_avg: 4.98,
-          rating_count: 142,
           is_featured: true,
           is_first_party: true
-        });
-      }
+        },
+        {
+          id: 100,
+          slug: 'rock-paper-scissors',
+          name: 'Rock Paper Scissors',
+          tagline: 'Secret move lock & instant real-time duel in chat!',
+          icon_url: 'https://api.iconify.design/twemoji:crossed-swords.svg',
+          banner_url: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800',
+          description: 'Lock in your secret tool (Rock, Paper, or Scissors) in chat and challenge your friend to reveal the winner!',
+          category: 'Game',
+          developer_username: 'gdr',
+          status: 'published',
+          total_users: 1980,
+          rating_avg: 4.95,
+          is_featured: true,
+          is_first_party: true
+        },
+        {
+          id: 101,
+          slug: 'tic-tac-toe',
+          name: 'Tic-Tac-Toe Duel',
+          tagline: 'Interactive 3x3 Grid multiplayer duel directly in chat!',
+          icon_url: 'https://api.iconify.design/twemoji:video-game.svg',
+          banner_url: 'https://images.unsplash.com/photo-1611996575749-79a3a250f948?w=800',
+          description: 'Challenge a friend in chat to a live 3x3 Tic-Tac-Toe duel with strict turn enforcement and win tracking!',
+          category: 'Game',
+          developer_username: 'gdr',
+          status: 'published',
+          total_users: 1750,
+          rating_avg: 4.92,
+          is_featured: true,
+          is_first_party: true
+        },
+        {
+          id: 102,
+          slug: 'quick-quiz',
+          name: 'Quick Quiz Challenge',
+          tagline: 'Multiplayer live trivia challenge with database question tracking!',
+          icon_url: 'https://api.iconify.design/twemoji:brain.svg',
+          banner_url: 'https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?w=800',
+          description: 'Answer live quiz questions in chat with your friend and see who gets the highest score without repeating questions!',
+          category: 'Game',
+          developer_username: 'gdr',
+          status: 'published',
+          total_users: 2120,
+          rating_avg: 4.90,
+          is_featured: true,
+          is_first_party: true
+        }
+      ];
+
+      // Merge & prevent duplicates
+      newGames.forEach(game => {
+        if (!list.some(e => e.slug === game.slug)) {
+          list.unshift(game);
+        }
+      });
 
       setExperiences(list);
     } catch (err) {

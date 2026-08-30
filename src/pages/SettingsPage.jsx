@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, Shield, User, Bell, Sparkles, Map, Lock, Info, Check, ShieldCheck, Code, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Settings, Shield, User, Bell, Sparkles, Map, Lock, Info, Check, ShieldCheck, Code, AlertTriangle, ExternalLink, Key, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { request } from '../services/api';
+import { userService } from '../services/userService';
 import { developerService } from '../services/developerService';
 import { RoadmapModal } from '../components/RoadmapModal';
 import { BlockedUsersTab } from '../components/BlockedUsersTab';
@@ -30,6 +31,15 @@ export function SettingsPage() {
   const [appCount, setAppCount] = useState(0);
   const [togglingDev, setTogglingDev] = useState(false);
 
+  // AI Keys states
+  const [aiKeys, setAiKeys] = useState({ groq: { has_key: false, masked: null }, sarvam: { has_key: false, masked: null } });
+  const [groqInput, setGroqInput] = useState('');
+  const [sarvamInput, setSarvamInput] = useState('');
+  const [savingGroq, setSavingGroq] = useState(false);
+  const [savingSarvam, setSavingSarvam] = useState(false);
+  const [groqError, setGroqError] = useState(null);
+  const [sarvamError, setSarvamError] = useState(null);
+
   const fetchPrivacy = async () => {
     try {
       const res = await request('/user/privacy', { method: 'GET' });
@@ -51,10 +61,63 @@ export function SettingsPage() {
     } catch (e) {}
   };
 
+  const fetchAiKeys = async () => {
+    try {
+      const res = await userService.getAiKeys();
+      if (res.keys) {
+        setAiKeys(res.keys);
+      }
+    } catch (e) {}
+  };
+
   useEffect(() => {
     fetchPrivacy();
     fetchDevStatus();
+    fetchAiKeys();
   }, []);
+
+  const handleSaveKey = async (provider) => {
+    const keyVal = provider === 'groq' ? groqInput : sarvamInput;
+    if (!keyVal.trim()) return;
+
+    if (provider === 'groq') {
+      setSavingGroq(true);
+      setGroqError(null);
+    } else {
+      setSavingSarvam(true);
+      setSarvamError(null);
+    }
+
+    try {
+      const res = await userService.saveAiKey(provider, keyVal.trim());
+      addToast(res.message, 'success');
+      if (provider === 'groq') {
+        setGroqInput('');
+      } else {
+        setSarvamInput('');
+      }
+      fetchAiKeys();
+    } catch (err) {
+      if (provider === 'groq') {
+        setGroqError(err.message || 'Verification failed');
+      } else {
+        setSarvamError(err.message || 'Verification failed');
+      }
+    } finally {
+      if (provider === 'groq') setSavingGroq(false);
+      else setSavingSarvam(false);
+    }
+  };
+
+  const handleDeleteKey = async (provider) => {
+    try {
+      const res = await userService.deleteAiKey(provider);
+      addToast(res.message, 'info');
+      fetchAiKeys();
+    } catch (err) {
+      addToast(err.message || 'Failed to remove key', 'error');
+    }
+  };
 
   const handleSavePrivacy = async (e) => {
     e.preventDefault();
@@ -152,6 +215,16 @@ export function SettingsPage() {
           >
             <ShieldCheck className="w-4 h-4 text-indigo-400" />
             <span>Connected Apps</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ai_keys')}
+            className={`px-4 py-2.5 rounded-2xl flex items-center gap-2 shrink-0 transition-all ${
+              activeTab === 'ai_keys' ? 'bg-indigo-600 text-white font-bold shadow-lg' : 'bg-white/5 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Key className="w-4 h-4 text-amber-400" />
+            <span>AI Keys (BYOK)</span>
           </button>
 
           <button
@@ -369,6 +442,111 @@ export function SettingsPage() {
         {activeTab === 'blocked' && (
           <div className="glass-panel p-6 rounded-3xl border border-white/10">
             <BlockedUsersTab />
+          </div>
+        )}
+
+        {/* Tab 6: AI Keys (BYOK) */}
+        {activeTab === 'ai_keys' && (
+          <div className="glass-panel p-6 rounded-3xl border border-white/10 flex flex-col gap-6">
+            <div>
+              <span className="text-xs font-extrabold uppercase text-amber-400 tracking-wider">Bring Your Own Key</span>
+              <h2 className="text-xl font-black text-white mt-0.5">AI Provider Keys (optional)</h2>
+              <p className="text-xs text-gray-400 mt-1">
+                If the app's shared AI service is temporarily unavailable, your own key will be used automatically as a personal backup for your chats only.
+              </p>
+            </div>
+
+            {/* Groq Key Card */}
+            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-white">Groq API Key</span>
+                  {aiKeys.groq?.has_key && (
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-bold">
+                      Saved ({aiKeys.groq.masked})
+                    </span>
+                  )}
+                </div>
+                {aiKeys.groq?.has_key && (
+                  <button
+                    onClick={() => handleDeleteKey('groq')}
+                    className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors text-xs flex items-center gap-1 font-semibold"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder={aiKeys.groq?.has_key ? `Change key (${aiKeys.groq.masked})` : 'Paste gsk_... key'}
+                  value={groqInput}
+                  onChange={(e) => setGroqInput(e.target.value)}
+                  className="flex-1 px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50"
+                />
+                <button
+                  onClick={() => handleSaveKey('groq')}
+                  disabled={savingGroq || !groqInput.trim()}
+                  className="btn-gradient px-5 py-2.5 rounded-xl text-xs font-bold shrink-0 disabled:opacity-50"
+                >
+                  {savingGroq ? 'Verifying...' : 'Save Key'}
+                </button>
+              </div>
+
+              {groqError && (
+                <p className="text-xs text-red-400 bg-red-950/30 border border-red-500/20 p-2.5 rounded-xl">
+                  {groqError}
+                </p>
+              )}
+            </div>
+
+            {/* Sarvam Key Card */}
+            <div className="p-5 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-white">Sarvam AI API Key</span>
+                  {aiKeys.sarvam?.has_key && (
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-[10px] font-bold">
+                      Saved ({aiKeys.sarvam.masked})
+                    </span>
+                  )}
+                </div>
+                {aiKeys.sarvam?.has_key && (
+                  <button
+                    onClick={() => handleDeleteKey('sarvam')}
+                    className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl transition-colors text-xs flex items-center gap-1 font-semibold"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  placeholder={aiKeys.sarvam?.has_key ? `Change key (${aiKeys.sarvam.masked})` : 'Paste sk_... key'}
+                  value={sarvamInput}
+                  onChange={(e) => setSarvamInput(e.target.value)}
+                  className="flex-1 px-4 py-2.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50"
+                />
+                <button
+                  onClick={() => handleSaveKey('sarvam')}
+                  disabled={savingSarvam || !sarvamInput.trim()}
+                  className="btn-gradient px-5 py-2.5 rounded-xl text-xs font-bold shrink-0 disabled:opacity-50"
+                >
+                  {savingSarvam ? 'Verifying...' : 'Save Key'}
+                </button>
+              </div>
+
+              {sarvamError && (
+                <p className="text-xs text-red-400 bg-red-950/30 border border-red-500/20 p-2.5 rounded-xl">
+                  {sarvamError}
+                </p>
+              )}
+            </div>
           </div>
         )}
 

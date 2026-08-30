@@ -55,71 +55,108 @@ export function SelectChatToLaunchModal({ isOpen, onClose, experience, onLaunchS
     try {
       const selectedConv = conversations.find(c => c.id === selectedConvId);
 
-      // Pre-fetch synchronized question set for game experiences
-      let initialState = null;
-      let modeLabel = '';
+      let payload = null;
 
-      if (experience.slug === 'compatibility-test') {
+      if (experience.slug === 'rock-paper-scissors') {
+        payload = JSON.stringify({
+          game_type: 'rps',
+          game_id: 'rps_' + Date.now(),
+          p1_id: null,
+          p1_name: null,
+          p1_move: null,
+          p2_id: null,
+          p2_name: null,
+          p2_move: null,
+          status: 'waiting'
+        });
+      } else if (experience.slug === 'tic-tac-toe') {
+        payload = JSON.stringify({
+          game_type: 'tictactoe',
+          game_id: 'ttt_' + Date.now(),
+          p1_id: null,
+          p1_name: null,
+          p2_id: null,
+          p2_name: null,
+          board: Array(9).fill(null),
+          turn: 'X',
+          status: 'playing',
+          winner: null
+        });
+      } else if (experience.slug === 'compatibility-test') {
         const catParam = testMode === 'partner' ? 'Love' : 'Lifestyle';
-        modeLabel = testMode === 'partner' ? '💖 Romantic Partner' : '👥 Best Friends';
-
         let selectedQs = [];
         try {
-          const qRes = await request(`/experiences/questions?game_slug=compatibility-test&category=${catParam}`);
-          selectedQs = (qRes.questions || []).slice(0, questionCount);
+          const qRes = await request(`/experiences/questions?game_slug=compatibility-test&category=${catParam}&conversation_id=${selectedConvId}`);
+          selectedQs = (qRes.questions || []).map(q => ({ id: q.id, q: q.question_text, opts: q.options })).slice(0, questionCount);
         } catch (e) {}
 
         if (selectedQs.length === 0) {
           const fallbackLove = [
-            { id: 101, question_text: "What makes you feel most loved by someone?", options: ["Words of affirmation & sweet compliments", "Quality uninterrupted time together", "Thoughtful gestures & helpful support", "Surprises & meaningful gifts"] },
-            { id: 102, question_text: "What is most important in a long-term romantic relationship?", options: ["Trust & absolute honesty", "Deep emotional communication", "Shared life goals & values", "Spark, chemistry & passion"] },
-            { id: 103, question_text: "How often do you ideally like to spend time with your partner?", options: ["Almost every single day", "A few times a week", "Mostly weekends", "A healthy mix of together and alone time"] },
-            { id: 104, question_text: "How do you prefer your partner to apologize after an argument?", options: ["Say sorry directly & sincerely", "Explain what happened & talk it out", "Show change through actions", "Give me space to cool down first"] },
-            { id: 105, question_text: "What kind of date sounds most ideal to you?", options: ["Fancy dinner out at a nice restaurant", "Cozy movie night & cooking at home", "Outdoor adventure or traveling", "Simple walk and deep conversation"] },
-            { id: 106, question_text: "What is your biggest relationship dealbreaker?", options: ["Dishonesty & secrecy", "Lack of effort or attention", "Disrespect or rudeness", "Poor communication"] },
-            { id: 107, question_text: "How much personal independent space should partners have?", options: ["Very little, we do everything together", "Some personal hobby time", "A lot of independent time", "Whatever naturally feels right"] },
-            { id: 108, question_text: "What would make you feel most secure in a relationship?", options: ["Consistent daily communication", "Unquestionable loyalty", "Emotional openness & vulnerability", "Shared long-term future plans"] },
-            { id: 109, question_text: "Would you rather have a partner who is very similar to you or different?", options: ["Very similar in personalities", "Mostly similar with minor differences", "Balanced differences that complement", "Very different & spontaneous"] },
-            { id: 110, question_text: "What matters most during difficult emotional times?", options: ["Emotional comfort & listening", "Practical help & solutions", "Giving space until ready", "Figuring it out together"] }
+            { id: 101, q: "What makes you feel most loved by someone?", opts: ["Words of affirmation & sweet compliments", "Quality uninterrupted time together", "Thoughtful gestures & helpful support", "Surprises & meaningful gifts"] },
+            { id: 102, q: "What is most important in a long-term romantic relationship?", opts: ["Trust & absolute honesty", "Deep emotional communication", "Shared life goals & values", "Spark, chemistry & passion"] },
+            { id: 103, q: "How often do you ideally like to spend time with your partner?", opts: ["Almost every single day", "A few times a week", "Mostly weekends", "A healthy mix of together and alone time"] },
+            { id: 104, q: "How do you prefer your partner to apologize after an argument?", opts: ["Say sorry directly & sincerely", "Explain what happened & talk it out", "Show change through actions", "Give me space to cool down first"] },
+            { id: 105, q: "What kind of date sounds most ideal to you?", opts: ["Fancy dinner out at a nice restaurant", "Cozy movie night & cooking at home", "Outdoor adventure or traveling", "Simple walk and deep conversation"] }
           ];
-
           const fallbackFriends = [
-            { id: 201, question_text: "What is the best way to spend a hangout weekend with friends?", options: ["Road trip or outdoor trip", "Chill movie/gaming night at home", "Exploring food spots & cafes", "Attending concerts or events"] },
-            { id: 202, question_text: "How quickly do you reply to group messages?", options: ["Immediately within minutes", "Within a few hours", "Whenever I am free", "Only when directly tagged"] },
-            { id: 203, question_text: "What describes your personality in a friend group?", options: ["The Planner & organizer", "The Funny spontaneous one", "The Listener & advisor", "The Chill go-with-the-flow one"] },
-            { id: 204, question_text: "What type of humor do you connect with most?", options: ["Witty & sarcastic banter", "Silly & lighthearted humor", "Dry & observational", "Dark humor & memes"] },
-            { id: 205, question_text: "How do you handle last-minute spontaneous hangout plans?", options: ["Love it! I'm ready in 5 minutes!", "Need a bit of advance notice", "Prefer planned schedules", "Depends on my mood & energy"] },
-            { id: 206, question_text: "What do you value most in a close friendship?", options: ["Loyalty & having my back", "Honesty & straightforwardness", "Fun memories & shared laughs", "Being able to talk about anything"] },
-            { id: 207, question_text: "What would you do if your friend was having a tough day?", options: ["Go visit them with food/treats", "Text/call to listen to them", "Give them space and check in later", "Distract them with something fun"] },
-            { id: 208, question_text: "What describes your ideal trip style?", options: ["Packed itinerary with every spot planned", "Relaxing with no strict timetable", "Action-packed budget backpacking", "Luxury & comfort first"] },
-            { id: 209, question_text: "How do you handle disagreements with friends?", options: ["Talk it out calmly and directly", "Let it pass & move on naturally", "Take time to think before bringing it up", "Crack a joke to break tension"] },
-            { id: 210, question_text: "What is your approach to sharing food/belongings with friends?", options: ["What's mine is yours!", "Happy to share if asked", "Prefer to keep things separate", "Only with my absolute best friends"] }
+            { id: 201, q: "What is the best way to spend a hangout weekend with friends?", opts: ["Road trip or outdoor trip", "Chill movie/gaming night at home", "Exploring food spots & cafes", "Attending concerts or events"] },
+            { id: 202, q: "How quickly do you reply to group messages?", opts: ["Immediately within minutes", "Within a few hours", "Whenever I am free", "Only when directly tagged"] },
+            { id: 203, q: "What describes your personality in a friend group?", opts: ["The Planner & organizer", "The Funny spontaneous one", "The Listener & advisor", "The Chill go-with-the-flow one"] },
+            { id: 204, q: "What type of humor do you connect with most?", opts: ["Witty & sarcastic banter", "Silly & lighthearted humor", "Dry & observational", "Dark humor & memes"] },
+            { id: 205, q: "How do you handle last-minute spontaneous hangout plans?", opts: ["Love it! I'm ready in 5 minutes!", "Need a bit of advance notice", "Prefer planned schedules", "Depends on my mood & energy"] }
           ];
-
-          const pool = testMode === 'partner' ? fallbackLove : fallbackFriends;
-          selectedQs = pool.slice(0, questionCount);
+          selectedQs = (testMode === 'partner' ? fallbackLove : fallbackFriends).slice(0, questionCount);
         }
 
-        initialState = {
-          questions: selectedQs,
-          total_questions: selectedQs.length,
+        payload = JSON.stringify({
+          game_type: 'compat_test',
+          game_id: 'compat_' + Date.now(),
           test_mode: testMode,
-          answers: {},
+          questions: selectedQs,
+          p1_id: null,
+          p1_name: null,
+          p1_answers: {},
+          p2_id: null,
+          p2_name: null,
+          p2_answers: {},
           status: 'in_progress'
-        };
+        });
+      } else if (experience.slug === 'quick-quiz') {
+        let selectedQs = [];
+        try {
+          const qRes = await request(`/experiences/questions?game_slug=quiz&category=All&conversation_id=${selectedConvId}`);
+          selectedQs = (qRes.questions || []).map(q => ({ id: q.id, q: q.question_text, opts: q.options, correct: q.correct_index ?? 0 })).slice(0, questionCount);
+        } catch (e) {}
+
+        if (selectedQs.length === 0) {
+          selectedQs = [
+            { id: 9001, q: 'Which planet is known as the Red Planet?', opts: ['Mars', 'Venus', 'Jupiter', 'Saturn'], correct: 0 },
+            { id: 9002, q: 'What is the capital city of Japan?', opts: ['Beijing', 'Seoul', 'Tokyo', 'Bangkok'], correct: 2 },
+            { id: 9003, q: 'How many sides does a hexagon have?', opts: ['5', '6', '7', '8'], correct: 1 },
+            { id: 9004, q: 'Who wrote Romeo and Juliet?', opts: ['Charles Dickens', 'William Shakespeare', 'Jane Austen', 'Mark Twain'], correct: 1 },
+            { id: 9005, q: 'What is the chemical symbol for Gold?', opts: ['Go', 'Gd', 'Au', 'Ag'], correct: 2 }
+          ].slice(0, questionCount);
+        }
+
+        payload = JSON.stringify({
+          game_type: 'quiz_test',
+          game_id: 'quiz_' + Date.now(),
+          questions: selectedQs,
+          p1_id: null,
+          p1_name: null,
+          p1_answers: {},
+          p2_id: null,
+          p2_name: null,
+          p2_answers: {},
+          status: 'in_progress'
+        });
+      } else {
+        payload = `🎮 Started Activity: ${experience.name}!`;
       }
 
-      const res = await experienceService.createSession(experience.id, selectedConvId, initialState, experience.slug);
-      const sessionCode = res.session_code;
+      await chatService.sendMessage(selectedConvId, payload);
 
-      // Post invitation message directly into chat room
-      const msgText = experience.slug === 'compatibility-test'
-        ? `🎮 Compatibility Test Started (${questionCount} Questions - ${modeLabel})! Session #${sessionCode}`
-        : `🎮 Started Activity: ${experience.name}! Session #${sessionCode}`;
-
-      await chatService.sendMessage(selectedConvId, msgText);
-
-      addToast(`Activity launched in chat!`, 'success');
+      addToast(`Game posted to chat!`, 'success');
       onClose();
 
       const targetPath = selectedConv?.type === 'direct' && selectedConv?.counterpart?.username
@@ -129,7 +166,6 @@ export function SelectChatToLaunchModal({ isOpen, onClose, experience, onLaunchS
       navigate(targetPath, {
         state: {
           activeExp: experience,
-          sessionCode: sessionCode,
           convId: selectedConvId
         }
       });

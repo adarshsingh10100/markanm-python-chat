@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   MessageSquare, Send, Plus, Paperclip, Smile, Image as ImageIcon,
@@ -28,10 +28,16 @@ import { JumpToDateModal } from '../components/JumpToDateModal';
 import { MessageInfoModal } from '../components/MessageInfoModal';
 import { InAppCallModal } from '../components/InAppCallModal';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
+import { DeleteChatModal } from '../components/DeleteChatModal';
 import { ImageSendConfirmModal } from '../components/ImageSendConfirmModal';
 import { CreateGroupModal } from '../components/CreateGroupModal';
+import { InlineGameModal } from '../components/InlineGameModal';
+import { RpsWidget } from '../components/RpsWidget';
+import { TicTacToeWidget } from '../components/TicTacToeWidget';
+import { CompatQuizWidget } from '../components/CompatQuizWidget';
 import { playSendSound, playReceiveSound, initAudioOnUserInteraction } from '../utils/soundUtils';
 import { messageCacheService } from '../services/messageCacheService';
+import { characterService } from '../services/characterService';
 import { formatMessagePreview, formatTime, formatDateDivider, countryFlag } from '../utils/textUtils';
 import { encodeId, decodeId } from '../utils/hashUtils';
 
@@ -47,6 +53,7 @@ export function ChatPage() {
   const [sending, setSending] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [searchConvQuery, setSearchConvQuery] = useState('');
+  const [aiTypingStatus, setAiTypingStatus] = useState(null);
 
   // Fold / Unfold & Full Focus Mode state
   const [isSidebarFolded, setIsSidebarFolded] = useState(false);
@@ -63,6 +70,7 @@ export function ChatPage() {
   const [isWhatsAppImportOpen, setIsWhatsAppImportOpen] = useState(false);
   const [isMeetModalOpen, setIsMeetModalOpen] = useState(false);
   const [isJumpModalOpen, setIsJumpModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isInChatSearchOpen, setIsInChatSearchOpen] = useState(false);
   const [inChatSearchQuery, setInChatSearchQuery] = useState('');
   const [inChatSearchResults, setInChatSearchResults] = useState([]);
@@ -74,6 +82,7 @@ export function ChatPage() {
   const [stagedImagePreviewUrl, setStagedImagePreviewUrl] = useState(null);
   const [isImageConfirmOpen, setIsImageConfirmOpen] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [isInlineGameOpen, setIsInlineGameOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
 
   const touchStartRef = useRef(null);
@@ -98,6 +107,60 @@ export function ChatPage() {
   const isInitialLoadRef = useRef(true);
   const prevMessagesCountRef = useRef(0);
   const userJustSentRef = useRef(false);
+
+  const typingTimeoutRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
+
+  // Resolve target conversation ID transparently
+  let targetConvId = activeConversation?.id;
+  if (conversationId) {
+    if (conversationId.startsWith('@')) {
+      const targetUsername = conversationId.substring(1).toLowerCase();
+      const match = conversations.find(c => c.counterpart?.username?.toLowerCase() === targetUsername);
+      targetConvId = match ? match.id : conversationId;
+    } else {
+      const decoded = decodeId(conversationId);
+      targetConvId = (typeof decoded === 'number' && decoded > 0) ? decoded : conversationId;
+    }
+  }
+
+  const stopTypingImmediately = useCallback(() => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    lastTypingSentRef.current = 0;
+    if (targetConvId) {
+      chatService.updateTypingStatus(targetConvId, false).catch(() => {});
+    }
+  }, [targetConvId]);
+
+  const handleTypingChange = (val) => {
+    setNewMessage(val);
+    if (!targetConvId) return;
+
+    if (!val.trim()) {
+      stopTypingImmediately();
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastTypingSentRef.current >= 3000) {
+      lastTypingSentRef.current = now;
+      chatService.updateTypingStatus(targetConvId, true).catch(() => {});
+    }
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      stopTypingImmediately();
+    }, 3500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (targetConvId) {
+        chatService.updateTypingStatus(targetConvId, false).catch(() => {});
+      }
+    };
+  }, [targetConvId]);
 
   // Global keydown listener: Auto-focus message input when typing
   useEffect(() => {
@@ -171,19 +234,6 @@ export function ChatPage() {
       }
     }
   };
-
-  // Resolve target conversation ID transparently
-  let targetConvId = activeConversation?.id;
-  if (conversationId) {
-    if (conversationId.startsWith('@')) {
-      const targetUsername = conversationId.substring(1).toLowerCase();
-      const match = conversations.find(c => c.counterpart?.username?.toLowerCase() === targetUsername);
-      targetConvId = match ? match.id : conversationId;
-    } else {
-      const decoded = decodeId(conversationId);
-      targetConvId = (typeof decoded === 'number' && decoded > 0) ? decoded : conversationId;
-    }
-  }
 
   const activeTheme = CHAT_THEMES.find(t => t.id === themeId) || CHAT_THEMES[0];
 
@@ -260,10 +310,34 @@ export function ChatPage() {
         setDisplayedMessages([...cached]);
       }
     }
-    
-    // Do NOT overwrite user's Jump Mode view or history reading view during background polling
+
+    // Helper: incremental fetch (only new messages since latest confirmed ID)
+    const doIncrementalFetch = async () => {
+      // Find latest CONFIRMED (non-temp) message ID
+      const confirmedMsgs = allMessagesRef.current.filter(m => typeof m.id === 'number' && m.id > 0);
+      if (confirmedMsgs.length === 0) return;
+      const latestId = confirmedMsgs[confirmedMsgs.length - 1].id;
+      try {
+        const checkRes = await chatService.getMessages(cid, latestId, 0, 50);
+        const newMsgs = checkRes.messages || [];
+        if (newMsgs.length > 0) {
+          const existingIds = new Set(allMessagesRef.current.map(m => m.id));
+          const freshNew = newMsgs.filter(m => !existingIds.has(m.id));
+          if (freshNew.length > 0) {
+            allMessagesRef.current = [...allMessagesRef.current, ...freshNew];
+            setDisplayedMessages([...allMessagesRef.current]);
+            prevMessagesCountRef.current = allMessagesRef.current.length;
+            const newest = freshNew[freshNew.length - 1];
+            if (newest && newest.sender_id != user?.id && !newest.is_mine) {
+              playReceiveSound();
+            }
+          }
+        }
+      } catch (e) {}
+    };
+
+    // If user is in jump mode or reading history, only append new messages
     if ((isJumpModeRef.current || userIsScrolledUp) && allMessagesRef.current.length > 0) {
-      // Just check for newer messages without re-rendering history
       try {
         const latestId = allMessagesRef.current[allMessagesRef.current.length - 1]?.id || 0;
         if (typeof latestId === 'number' && latestId > 0) {
@@ -283,22 +357,37 @@ export function ChatPage() {
       return;
     }
 
+    // If user just sent a message, do NOT do a full-replace fetch.
+    // Use incremental fetch to avoid wiping optimistic messages in the race window.
+    if (userJustSentRef.current && allMessagesRef.current.length > 0) {
+      await doIncrementalFetch();
+      userJustSentRef.current = false;
+      return;
+    }
+
     try {
       const res = await chatService.getMessages(cid, 0, 0, 300);
       const fetchedMsgs = res.messages || [];
 
       // Preserve any pending optimistic messages that are still sending
-      const pendingMsgs = allMessagesRef.current.filter(m => m.status === 'sending' || m.status === 'failed');
+      // Temp IDs always start with 'temp_' string
+      const pendingMsgs = allMessagesRef.current.filter(
+        m => typeof m.id === 'string' && m.id.startsWith('temp_')
+      );
 
       // Merge fetched messages with pending optimistic messages
       const existingIds = new Set(fetchedMsgs.map(m => m.id));
-      const filteredPending = pendingMsgs.filter(m => !existingIds.has(m.id));
+      const filteredPending = pendingMsgs.filter(m => {
+        if (existingIds.has(m.id)) return false;
+        // Drop temp message if real server message with same content already arrived
+        return !fetchedMsgs.some(f => f.sender_id == m.sender_id && f.content === m.content);
+      });
 
       const merged = [...fetchedMsgs, ...filteredPending];
       allMessagesRef.current = merged;
 
-      // Update offline local cache
-      messageCacheService.set(cid, merged);
+      // Update offline local cache (only confirmed messages)
+      messageCacheService.set(cid, fetchedMsgs);
 
       // Detect unread messages & play receive audio chime
       if (!isInitialLoadRef.current && merged.length > prevMessagesCountRef.current) {
@@ -306,29 +395,21 @@ export function ChatPage() {
         if (newest && newest.sender_id != user?.id && !newest.is_mine) {
           playReceiveSound();
         }
-        if (userIsScrolledUp && !userJustSentRef.current) {
+        if (userIsScrolledUp) {
           setHasUnreadNewMessages(true);
         }
       }
 
       prevMessagesCountRef.current = merged.length;
-      
-      const shouldScrollBottom = isInitialLoadRef.current || userJustSentRef.current;
       setDisplayedMessages([...allMessagesRef.current]);
-      
-      if (shouldScrollBottom) {
+
+      if (isInitialLoadRef.current) {
+        isInitialLoadRef.current = false;
         setTimeout(() => {
           if (messagesContainerRef.current) {
             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
           }
         }, 20);
-      }
-
-      if (isInitialLoadRef.current) {
-        isInitialLoadRef.current = false;
-      }
-      if (userJustSentRef.current) {
-        userJustSentRef.current = false;
       }
     } catch (e) {}
   };
@@ -563,8 +644,47 @@ export function ChatPage() {
             m.id === task.tempId ? { ...realMsg, is_mine: true, status: 'sent' } : m
           );
           updateDisplayedWindow(false);
+          // Scroll to bottom to ensure confirmed message stays in view
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+          }, 30);
         }
         sendQueueRef.current.shift();
+
+        // Trigger AI reply ONLY if conversation/counterpart is explicitly an AI
+        const counterpart = activeConversation?.counterpart;
+        const isAiTarget = Boolean(counterpart?.is_ai) || 
+                           Boolean(activeConversation?.is_ai) || 
+                           Boolean(counterpart?.ai_character_id);
+        if (isAiTarget) {
+          const charName = activeConversation?.counterpart?.display_name || activeConversation?.name || 'AI Character';
+          setAiTypingStatus(`${charName} is thinking...`);
+          try {
+            const aiRes = await characterService.generateChatReply(task.convId);
+            if (aiRes.success && aiRes.message) {
+              const delay = aiRes.typing_duration_ms || 1800;
+              setAiTypingStatus(`${charName} is typing...`);
+              await new Promise(r => setTimeout(r, delay));
+              setAiTypingStatus(null);
+
+              const aiMsg = {
+                ...aiRes.message,
+                is_mine: false,
+                status: 'sent'
+              };
+              const alreadyExists = allMessagesRef.current.some(m => m.id === aiMsg.id);
+              if (!alreadyExists) {
+                allMessagesRef.current = [...allMessagesRef.current, aiMsg];
+                updateDisplayedWindow(true);
+                playReceiveSound();
+              }
+            }
+          } catch (aiErr) {
+            setAiTypingStatus(null);
+          }
+        }
       } catch (err) {
         // Mark message as failed
         allMessagesRef.current = allMessagesRef.current.map(m =>
@@ -583,6 +703,7 @@ export function ChatPage() {
   // OPTIMISTIC MESSAGE SENDER (0ms UI Latency)
   const handleSendMessage = async (e, type = 'text', customContent = null) => {
     if (e) e.preventDefault();
+    stopTypingImmediately();
     const content = customContent || newMessage;
     if (!content.trim() || !targetConvId) return;
 
@@ -654,6 +775,22 @@ export function ChatPage() {
           <span>🚫 This message was deleted</span>
         </p>
       );
+    }
+
+    // Game Widgets (Rock Paper Scissors, Tic-Tac-Toe, Compatibility Test, Quiz Challenge)
+    if (text.startsWith('{"game_type"')) {
+      try {
+        const gamePayload = JSON.parse(text);
+        if (gamePayload.game_type === 'rps') {
+          return <RpsWidget gameData={gamePayload} messageId={msg.id} conversationId={targetConvId} />;
+        }
+        if (gamePayload.game_type === 'tictactoe') {
+          return <TicTacToeWidget gameData={gamePayload} messageId={msg.id} conversationId={targetConvId} />;
+        }
+        if (gamePayload.game_type === 'compat_test' || gamePayload.game_type === 'quiz_test') {
+          return <CompatQuizWidget gameData={gamePayload} messageId={msg.id} conversationId={targetConvId} />;
+        }
+      } catch (e) {}
     }
 
     // 1. Poll Message
@@ -833,14 +970,14 @@ export function ChatPage() {
           </div>
         </div>
 
-        {/* Conversations List */}
+        {/* Conversations List - Windowed for performance with 2k+ chats */}
         <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5 scrollbar-none">
           {filteredConversations.length === 0 ? (
             <div className="p-8 text-center text-xs text-gray-500">
               No conversations found. Start a new chat from Discover or Connections!
             </div>
           ) : (
-            filteredConversations.map(conv => {
+            filteredConversations.slice(0, 50).map(conv => {
               const isSelected = activeConversation?.id === conv.id;
               const title = conv.name || conv.counterpart?.display_name || 'Conversation';
               const targetSlug = conv.counterpart?.username ? `@${conv.counterpart.username}` : encodeId(conv.id);
@@ -895,6 +1032,11 @@ export function ChatPage() {
                 </div>
               );
             })
+          )}
+          {filteredConversations.length > 50 && searchConvQuery.trim() === '' && (
+            <p className="text-center text-[10px] text-gray-500 py-2">
+              + {filteredConversations.length - 50} more — use search to find them
+            </p>
           )}
         </div>
       </div>
@@ -1009,6 +1151,13 @@ export function ChatPage() {
                   title="Chat Theme"
                 >
                   <Palette className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  className="p-2.5 text-gray-400 hover:text-rose-400 rounded-xl hover:bg-rose-500/10 transition-all"
+                  title="Delete Chat"
+                >
+                  <Trash2 className="w-5 h-5 text-rose-400" />
                 </button>
                 <button
                   onClick={() => setIsMediaPanelOpen(!isMediaPanelOpen)}
@@ -1291,6 +1440,12 @@ export function ChatPage() {
                 );
               });
             })()}
+              {aiTypingStatus && (
+                <div className="flex items-center gap-2 text-xs text-indigo-300 font-semibold px-4 py-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl w-fit animate-pulse my-2">
+                  <span className="w-2 h-2 bg-indigo-400 rounded-full animate-ping" />
+                  <span>{aiTypingStatus}</span>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -1339,11 +1494,11 @@ export function ChatPage() {
 
                   <button
                     type="button"
-                    onClick={() => { setIsExperienceLauncherOpen(true); setShowAttachMenu(false); }}
-                    className="p-2.5 hover:bg-indigo-600/20 hover:text-indigo-300 rounded-xl flex items-center gap-2.5 text-white font-semibold text-xs sm:text-sm"
+                    onClick={() => { setIsInlineGameOpen(true); setShowAttachMenu(false); }}
+                    className="p-2.5 hover:bg-pink-600/20 hover:text-pink-300 rounded-xl flex items-center gap-2.5 text-white font-semibold text-xs sm:text-sm"
                   >
-                    <Gamepad2 className="w-4 h-4 text-indigo-400" />
-                    <span>🎮 Experiences & Mini Apps</span>
+                    <Sparkles className="w-4 h-4 text-pink-400" />
+                    <span>🎮 Quick Games & Activities</span>
                   </button>
 
                   <button
@@ -1413,7 +1568,8 @@ export function ChatPage() {
                   rows="1"
                   placeholder="Type a message... (Enter to send, Ctrl+Enter for newline, Ctrl+V to paste image)"
                   value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
+                  onChange={(e) => handleTypingChange(e.target.value)}
+                  onBlur={stopTypingImmediately}
                   onPaste={handlePaste}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -1649,6 +1805,24 @@ export function ChatPage() {
         isOpen={isCreateGroupOpen}
         onClose={() => setIsCreateGroupOpen(false)}
       />
+      <InlineGameModal
+        isOpen={isInlineGameOpen}
+        onClose={() => setIsInlineGameOpen(false)}
+        onSendMessage={(msg) => handleSendMessage(null, 'text', msg)}
+        conversationId={targetConvId}
+      />
+      {isDeleteModalOpen && (
+        <DeleteChatModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          conversationId={targetConvId}
+          onDeleted={() => {
+            allMessagesRef.current = [];
+            setDisplayedMessages([]);
+            loadMessages(targetConvId);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -46,7 +46,7 @@ class ReportController {
         $currentUser = AuthMiddleware::authenticate();
         
         // Simple admin authorization check (username 'gdr' or role check)
-        if (strtolower($currentUser['username']) !== 'gdr' && (int)$currentUser['id'] !== 1) {
+        if (($currentUser['role'] ?? '') !== 'admin') {
             jsonError('Unauthorized. Admin moderation access required.', 403);
         }
 
@@ -87,7 +87,7 @@ class ReportController {
      */
     public static function actionReport(): void {
         $currentUser = AuthMiddleware::authenticate();
-        if (strtolower($currentUser['username']) !== 'gdr' && (int)$currentUser['id'] !== 1) {
+        if (($currentUser['role'] ?? '') !== 'admin') {
             jsonError('Unauthorized.', 403);
         }
 

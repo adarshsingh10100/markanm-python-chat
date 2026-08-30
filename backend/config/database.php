@@ -14,6 +14,12 @@ class Database {
             $pass = defined('DB_PASS') ? DB_PASS : (getenv('DB_PASS') ?: $_ENV['DB_PASS'] ?: '');
             $charset = 'utf8mb4';
 
+            $options = [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ];
+
             $hostsToTry = array_unique([$host, 'localhost', '127.0.0.1']);
             $lastException = null;
 
@@ -27,8 +33,14 @@ class Database {
                 }
             }
 
-            if (self::$instance === null && $lastException) {
-                jsonError('Database connection error: ' . $lastException->getMessage(), 500);
+            if (self::$instance === null) {
+                if (function_exists('jsonError') && PHP_SAPI !== 'cli') {
+                    jsonError('Database connection error: ' . ($lastException ? $lastException->getMessage() : 'Connection refused'), 500);
+                } else if ($lastException) {
+                    throw $lastException;
+                } else {
+                    throw new RuntimeException('Database connection error: Connection refused');
+                }
             }
         }
         return self::$instance;

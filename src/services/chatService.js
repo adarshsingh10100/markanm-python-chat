@@ -44,6 +44,14 @@ export const chatService = {
     return await request(`/conversations/${convId}/leave`, { method: 'POST' });
   },
 
+  async clearForUser(convId) {
+    return await request(`/conversations/${convId}/clear`, { method: 'POST' });
+  },
+
+  async deleteForEveryone(convId) {
+    return await request(`/conversations/${convId}/delete-everyone`, { method: 'POST' });
+  },
+
   async getMessages(convId, sinceId = 0, beforeId = 0, limit = 300, isTop = false, dateStr = '', aroundId = 0) {
     let url = `/conversations/${convId}/messages?limit=${limit}&`;
     if (aroundId > 0) url += `around_id=${aroundId}&`;
@@ -84,8 +92,8 @@ export const chatService = {
     });
   },
 
-  async editMessage(messageId, content) {
-    return await request(`/messages/${messageId}`, { method: 'PATCH', body: { content } });
+  async editMessage(messageId, content, isGameUpdate = false) {
+    return await request(`/messages/${messageId}`, { method: 'PATCH', body: { content, is_game_update: isGameUpdate } });
   },
 
   async deleteMessage(messageId) {

@@ -3,6 +3,8 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../helpers/Mailer.php';
 require_once __DIR__ . '/../helpers/HashUtils.php';
+require_once __DIR__ . '/CharacterController.php';
+require_once __DIR__ . '/ConversationController.php';
 
 class MessageController {
 
@@ -42,7 +44,7 @@ class MessageController {
         $db = Database::getConnection();
 
         // 1. Authorization check
-        $memStmt = $db->prepare('SELECT id, last_read_message_id FROM conversation_members WHERE conversation_id = :cid AND user_id = :uid LIMIT 1');
+        $memStmt = $db->prepare('SELECT id, last_read_message_id, cleared_at FROM conversation_members WHERE conversation_id = :cid AND user_id = :uid LIMIT 1');
         $memStmt->execute(['cid' => $convId, 'uid' => $currentUser['id']]);
         $membership = $memStmt->fetch();
 
@@ -58,7 +60,13 @@ class MessageController {
         $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 500) : 300;
 
         $params = ['cid' => $convId];
-        $sql = '
+        $clearedFilter = '';
+        if (!empty($membership['cleared_at'])) {
+            $clearedFilter = ' AND m.created_at > :cleared_at';
+            $params['cleared_at'] = $membership['cleared_at'];
+        }
+
+        $sql = "
             SELECT m.id, m.conversation_id, m.sender_id, m.message_type, m.content, m.metadata, m.reply_to_id,
                    m.is_edited, m.is_deleted, m.created_at,
                    u.display_name AS sender_name, u.username AS sender_username, u.avatar_url AS sender_avatar,
@@ -67,8 +75,8 @@ class MessageController {
             JOIN users u ON m.sender_id = u.id
             LEFT JOIN messages rm ON m.reply_to_id = rm.id
             LEFT JOIN users ru ON rm.sender_id = ru.id
-            WHERE m.conversation_id = :cid
-        ';
+            WHERE m.conversation_id = :cid {$clearedFilter}
+        ";
 
         if ($aroundId > 0) {
             $minId = max(1, $aroundId - 150);
@@ -80,7 +88,7 @@ class MessageController {
             $sql .= " AND DATE(m.created_at) >= :target_date ORDER BY m.id ASC LIMIT {$limit}";
             $params['target_date'] = $targetDate;
         } else if ($sinceId > 0) {
-            $sql .= " AND m.id > {$sinceId} ORDER BY m.id ASC";
+            $sql .= " AND m.id > {$sinceId} ORDER BY m.id ASC LIMIT {$limit}";
         } else if ($beforeId > 0) {
             $sql .= " AND m.id < {$beforeId} ORDER BY m.id DESC LIMIT {$limit}";
         } else {
@@ -166,6 +174,7 @@ class MessageController {
     public static function sendMessage(string $identifier): void {
         $convId = self::resolveConvId($identifier);
         $currentUser = AuthMiddleware::authenticate();
+        AuthMiddleware::requireVerified($currentUser);
         $db = Database::getConnection();
 
         // Check conversation membership
@@ -313,6 +322,19 @@ class MessageController {
             }
         }
 
+        // Trigger server-side background AI reply if conversation contains an AI character
+        // Guarantees AI character replies even if user closes the browser tab!
+        try {
+            $convIdInt = (int)$convId;
+            $userIdInt = (int)$currentUser['id'];
+            register_shutdown_function(function() use ($convIdInt, $userIdInt) {
+                try {
+                    require_once __DIR__ . '/CharacterController.php';
+                    CharacterController::triggerBackgroundReply($convIdInt, $userIdInt);
+                } catch (Throwable $e) {}
+            });
+        } catch (Throwable $e) {}
+
         jsonResponse([
             'success' => true,
             'message' => [
@@ -343,12 +365,12 @@ class MessageController {
         $currentUser = AuthMiddleware::authenticate();
         $db = Database::getConnection();
 
-        $stmt = $db->prepare('SELECT * FROM messages WHERE id = :id AND sender_id = :uid LIMIT 1');
-        $stmt->execute(['id' => $messageId, 'uid' => $currentUser['id']]);
+        $stmt = $db->prepare('SELECT * FROM messages WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $messageId]);
         $msg = $stmt->fetch();
 
         if (!$msg) {
-            jsonError('Message not found or unauthorized to edit.', 403);
+            jsonError('Message not found.', 404);
         }
 
         if ($msg['is_deleted']) {
@@ -356,10 +378,24 @@ class MessageController {
         }
 
         $body = getRequestBody();
-        $newContent = sanitizeInput($body['content'] ?? '');
+        $newContent = trim($body['content'] ?? '');
 
         if (empty($newContent)) {
             jsonError('Content cannot be empty.', 422);
+        }
+
+        $isGameUpdate = !empty($body['is_game_update']) || str_starts_with(trim($msg['content']), '{"game_type"') || str_starts_with($newContent, '{"game_type"');
+
+        if (!$isGameUpdate && (int)$msg['sender_id'] !== (int)$currentUser['id']) {
+            jsonError('Unauthorized to edit this message.', 403);
+        }
+
+        if ($isGameUpdate) {
+            $memCheck = $db->prepare('SELECT 1 FROM conversation_members WHERE conversation_id = :cid AND user_id = :uid LIMIT 1');
+            $memCheck->execute(['cid' => $msg['conversation_id'], 'uid' => $currentUser['id']]);
+            if (!$memCheck->fetch()) {
+                jsonError('Unauthorized conversation member.', 403);
+            }
         }
 
         $update = $db->prepare('UPDATE messages SET content = :content, is_edited = 1 WHERE id = :id');
@@ -658,7 +694,7 @@ class MessageController {
 
         $file = $_FILES['file'];
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $allowedExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'avif', 'heic', 'pdf', 'mp4', 'mov'];
+        $allowedExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'tiff', 'avif', 'heic', 'pdf', 'mp4', 'mov'];
 
         if (!in_array($ext, $allowedExts)) {
             jsonError('File extension not allowed.', 400);

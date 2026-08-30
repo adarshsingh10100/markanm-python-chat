@@ -70,11 +70,14 @@ export function LoginPage() {
     }
     window.google.accounts.id.prompt((notification) => {
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // Fallback: render the button modal
-        window.google.accounts.id.renderButton(
-          document.getElementById('google-btn-container'),
-          { theme: 'filled_black', size: 'large', width: 360, text: 'continue_with' }
-        );
+        const container = document.getElementById('google-btn-container');
+        if (container) {
+          container.classList.remove('hidden');
+          window.google.accounts.id.renderButton(
+            container,
+            { theme: 'filled_black', size: 'large', width: 360, text: 'continue_with' }
+          );
+        }
       }
     });
   };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { MessageSquare, Users, Bell, Home, Settings, LogOut, Sparkles, Compass, Code, Gamepad2, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { MessageSquare, Users, Bell, Home, Settings, LogOut, Sparkles, Compass, Code, Gamepad2, Bot, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
 import { developerService } from '../services/developerService';
@@ -34,6 +34,7 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
     { label: 'Home', path: '/dashboard', icon: Home },
     { label: 'Chats', path: '/chat', icon: MessageSquare, badge: unreadTotal },
     { label: 'Discover', path: '/discover', icon: Compass },
+    { label: 'Characters', path: '/characters', icon: Bot },
     { label: 'Experiences', path: '/experiences', icon: Gamepad2 }
   ];
 

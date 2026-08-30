@@ -746,6 +746,24 @@ class ExperienceController {
             }
         }
 
+        // Database-backed question tracking per conversation
+        $convId = (int)($_GET['conversation_id'] ?? 0);
+        if ($convId > 0) {
+            try {
+                $msgStmt = $db->prepare('SELECT content FROM messages WHERE conversation_id = :cid AND (content LIKE "%qid:%" OR content LIKE "%Compatibility Q%" OR content LIKE "%Quiz Q%") LIMIT 300');
+                $msgStmt->execute(['cid' => $convId]);
+                $msgRows = $msgStmt->fetchAll();
+                foreach ($msgRows as $row) {
+                    if (preg_match_all('/qid:(\d+)/i', $row['content'], $matches)) {
+                        foreach ($matches[1] as $mid) {
+                            $excludeIds[] = (int)$mid;
+                        }
+                    }
+                }
+            } catch (Throwable $e) {}
+        }
+        $excludeIds = array_unique(array_filter($excludeIds));
+
         $sql = 'SELECT * FROM game_questions WHERE game_slug = :slug';
         $params = ['slug' => $slug];
 

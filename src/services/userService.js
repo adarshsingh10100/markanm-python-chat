@@ -27,5 +27,21 @@ export const userService = {
 
   async getBots() {
     return await request('/bots', { method: 'GET' });
+  },
+
+  async heartbeat() {
+    return await request('/presence/heartbeat', { method: 'POST' });
+  },
+
+  async getAiKeys() {
+    return await request('/settings/ai-keys', { method: 'GET' });
+  },
+
+  async saveAiKey(provider, apiKey) {
+    return await request('/settings/ai-keys', { method: 'POST', body: { provider, api_key: apiKey } });
+  },
+
+  async deleteAiKey(provider) {
+    return await request(`/settings/ai-keys/${encodeURIComponent(provider)}`, { method: 'DELETE' });
   }
 };

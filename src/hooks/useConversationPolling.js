@@ -8,7 +8,7 @@ import { chatService } from '../services/chatService';
  * - Pauses/reduces polling frequency when browser tab is inactive (Visibility API)
  * - Swappable service layer for future WebSocket implementation
  */
-export function useConversationPolling({ activeConvId, messages, setMessages, fetchConversations }) {
+export function useConversationPolling({ activeConvId, messages, setMessages, fetchConversations, updateCounterpartStatus }) {
   const activeConvIdRef = useRef(activeConvId);
   const messagesRef = useRef(messages);
 
@@ -41,6 +41,14 @@ export function useConversationPolling({ activeConvId, messages, setMessages, fe
 
           // Silently update conversation list preview
           fetchConversations(true);
+        }
+
+        // Also refresh active conversation's counterpart presence & typing status
+        if (updateCounterpartStatus) {
+          const cpRes = await chatService.getCounterpartStatus(activeConvIdRef.current);
+          if (cpRes && cpRes.status && isSubscribed) {
+            updateCounterpartStatus(cpRes.status);
+          }
         }
       } catch (e) {
         // Gracefully swallow transient polling network glitches

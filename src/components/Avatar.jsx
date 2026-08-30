@@ -21,18 +21,18 @@ export function Avatar({ src, name, size = 'md', presence = null, className = ''
     '3xl': 'w-6 h-6'
   };
 
-  // Generate Reddit-style robotic avatar if no custom image is uploaded
-  const botttsRobotUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name || 'MarkanMUser')}`;
-  const avatarSrc = src && src.trim() !== '' ? src : botttsRobotUrl;
+  // Human initial avatar fallback (never use robot bot icons)
+  const initialFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'U')}&background=6366f1&color=ffffff&bold=true`;
+  const avatarSrc = (src && src.trim() !== '' && !src.includes('bottts')) ? src : initialFallback;
 
   return (
     <div className={`relative inline-block shrink-0 ${className}`}>
       <img
         src={avatarSrc}
-        alt={name || 'User avatar'}
+        alt={name || 'Avatar'}
         onError={(e) => {
           e.target.onerror = null;
-          e.target.src = botttsRobotUrl;
+          e.target.src = initialFallback;
         }}
         className={`${sizeClasses[size]} rounded-full object-cover ring-2 ring-indigo-500/30 bg-[#151A24] p-0.5 shadow-md transition-transform hover:scale-105`}
       />

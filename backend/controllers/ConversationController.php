@@ -47,7 +47,7 @@ class ConversationController {
 
             if ($conv['type'] === 'direct') {
                 $cpStmt = $db->prepare('
-                    SELECT u.id, u.display_name, u.username, u.avatar_url, u.bio, p.status AS presence_status, p.last_seen_at, p.typing_conversation_id, p.typing_updated_at
+                    SELECT u.id, u.display_name, u.username, u.avatar_url, u.bio, u.is_ai, u.ai_character_id, p.status AS presence_status, p.last_seen_at, p.typing_conversation_id, p.typing_updated_at
                     FROM conversation_members cm
                     JOIN users u ON cm.user_id = u.id
                     LEFT JOIN user_presence p ON u.id = p.user_id
@@ -70,6 +70,8 @@ class ConversationController {
                         'username' => $cp['username'],
                         'avatar_url' => $cp['avatar_url'],
                         'bio' => decodeOutput($cp['bio']),
+                        'is_ai' => !empty($cp['is_ai']) && $cp['is_ai'] != 0,
+                        'ai_character_id' => (int)($cp['ai_character_id'] ?? 0),
                         'presence' => $cp['presence_status'] ?: 'offline',
                         'is_online' => $isOnline,
                         'last_seen_at' => $cp['last_seen_at'],
@@ -184,7 +186,7 @@ class ConversationController {
         }
 
         $membersStmt = $db->prepare('
-            SELECT cm.id, cm.role, cm.joined_at, u.id AS user_id, u.display_name, u.username, u.avatar_url, u.bio, p.status AS presence_status, p.last_seen_at
+            SELECT cm.id, cm.role, cm.joined_at, u.id AS user_id, u.display_name, u.username, u.avatar_url, u.bio, u.is_ai, u.ai_character_id, p.status AS presence_status, p.last_seen_at
             FROM conversation_members cm
             JOIN users u ON cm.user_id = u.id
             LEFT JOIN user_presence p ON u.id = p.user_id
@@ -212,6 +214,8 @@ class ConversationController {
                         'username' => $m['username'],
                         'avatar_url' => $m['avatar_url'],
                         'bio' => decodeOutput($m['bio']),
+                        'is_ai' => !empty($m['is_ai']) && $m['is_ai'] != 0,
+                        'ai_character_id' => (int)($m['ai_character_id'] ?? 0),
                         'presence' => $m['presence_status'] ?: 'offline',
                         'last_seen_at' => $m['last_seen_at']
                     ];
@@ -246,6 +250,52 @@ class ConversationController {
                 }, $members),
                 'counterpart' => $counterpart,
                 'created_at' => $conv['created_at']
+            ]
+        ]);
+    }
+
+    /**
+     * GET /api/conversations/{id}/counterpart-status
+     */
+    public static function getCounterpartStatus(string $identifier): void {
+        $convId = self::resolveConvId($identifier);
+        $currentUser = AuthMiddleware::authenticate();
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare('
+            SELECT cm.user_id, u.display_name, u.username, u.is_ai,
+                   p.status AS presence_status, p.last_seen_at, p.typing_conversation_id, p.typing_updated_at
+            FROM conversation_members cm
+            JOIN users u ON cm.user_id = u.id
+            LEFT JOIN user_presence p ON u.id = p.user_id
+            WHERE cm.conversation_id = :cid AND cm.user_id != :uid
+            LIMIT 1
+        ');
+        $stmt->execute(['cid' => $convId, 'uid' => $currentUser['id']]);
+        $cp = $stmt->fetch();
+
+        if (!$cp) {
+            jsonResponse([
+                'success' => true,
+                'status' => null
+            ]);
+            return;
+        }
+
+        $lastSeenTs = strtotime($cp['last_seen_at'] ?? '1970-01-01');
+        $isOnline = ($cp['presence_status'] === 'online') || ((time() - $lastSeenTs) < 120);
+
+        $typingUpdatedTs = strtotime($cp['typing_updated_at'] ?? '1970-01-01');
+        $isTyping = ((int)$cp['typing_conversation_id'] === (int)$convId) && ((time() - $typingUpdatedTs) < 6);
+
+        jsonResponse([
+            'success' => true,
+            'status' => [
+                'user_id' => (int)$cp['user_id'],
+                'is_online' => $isOnline,
+                'presence' => $isOnline ? 'online' : 'offline',
+                'is_typing' => $isTyping,
+                'last_seen_at' => $cp['last_seen_at']
             ]
         ]);
     }
@@ -564,5 +614,47 @@ class ConversationController {
         $stmt->execute(['cid' => $convId, 'uid' => $currentUser['id']]);
 
         jsonResponse(['success' => true, 'message' => 'You left the group']);
+    }
+
+    /**
+     * POST /api/conversations/{id}/clear
+     * Delete/Clear chat history for current user only
+     */
+    public static function clearForUser(string $identifier): void {
+        $convId = self::resolveId($identifier);
+        $currentUser = AuthMiddleware::authenticate();
+        $db = Database::getConnection();
+
+        try {
+            $db->exec('ALTER TABLE conversation_members ADD COLUMN cleared_at DATETIME DEFAULT NULL');
+        } catch (Throwable $e) {}
+
+        $stmt = $db->prepare('UPDATE conversation_members SET cleared_at = NOW() WHERE conversation_id = :cid AND user_id = :uid');
+        $stmt->execute(['cid' => $convId, 'uid' => $currentUser['id']]);
+
+        jsonResponse(['success' => true, 'message' => 'Chat cleared for you successfully.']);
+    }
+
+    /**
+     * POST /api/conversations/{id}/delete-everyone
+     * Delete chat messages for everyone
+     */
+    public static function deleteForEveryone(string $identifier): void {
+        $convId = self::resolveId($identifier);
+        $currentUser = AuthMiddleware::authenticate();
+        $db = Database::getConnection();
+
+        $roleStmt = $db->prepare('SELECT role FROM conversation_members WHERE conversation_id = :cid AND user_id = :uid LIMIT 1');
+        $roleStmt->execute(['cid' => $convId, 'uid' => $currentUser['id']]);
+        $member = $roleStmt->fetch();
+
+        if (!$member) {
+            jsonError('Access denied.', 403);
+        }
+
+        $stmt = $db->prepare('UPDATE messages SET is_deleted = 1 WHERE conversation_id = :cid');
+        $stmt->execute(['cid' => $convId]);
+
+        jsonResponse(['success' => true, 'message' => 'Chat deleted for everyone successfully.']);
     }
 }

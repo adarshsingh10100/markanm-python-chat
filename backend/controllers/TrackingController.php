@@ -222,7 +222,7 @@ class TrackingController {
      */
     public static function getActivityLogs(): void {
         $currentUser = AuthMiddleware::authenticate();
-        if (!in_array($currentUser['username'], ['gdr', 'admin', 'markanm'])) {
+        if (($currentUser['role'] ?? '') !== 'admin') {
             jsonError('Access denied.', 403);
         }
 
