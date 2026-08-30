@@ -73,22 +73,18 @@ class MessageController {
         if ($aroundId > 0) {
             $minId = max(1, $aroundId - 150);
             $maxId = $aroundId + 150;
-            $sql .= ' AND m.id >= :min_id AND m.id <= :max_id ORDER BY m.id ASC LIMIT ' . $limit;
-            $params['min_id'] = $minId;
-            $params['max_id'] = $maxId;
+            $sql .= " AND m.id >= {$minId} AND m.id <= {$maxId} ORDER BY m.id ASC LIMIT {$limit}";
         } else if ($isTop) {
-            $sql .= ' ORDER BY m.id ASC LIMIT ' . $limit;
+            $sql .= " ORDER BY m.id ASC LIMIT {$limit}";
         } else if (!empty($targetDate)) {
-            $sql .= ' AND DATE(m.created_at) >= :target_date ORDER BY m.id ASC LIMIT ' . $limit;
+            $sql .= " AND DATE(m.created_at) >= :target_date ORDER BY m.id ASC LIMIT {$limit}";
             $params['target_date'] = $targetDate;
         } else if ($sinceId > 0) {
-            $sql .= ' AND m.id > :since_id ORDER BY m.id ASC';
-            $params['since_id'] = $sinceId;
+            $sql .= " AND m.id > {$sinceId} ORDER BY m.id ASC";
         } else if ($beforeId > 0) {
-            $sql .= ' AND m.id < :before_id ORDER BY m.id DESC LIMIT ' . $limit;
-            $params['before_id'] = $beforeId;
+            $sql .= " AND m.id < {$beforeId} ORDER BY m.id DESC LIMIT {$limit}";
         } else {
-            $sql .= ' ORDER BY m.id DESC LIMIT ' . $limit;
+            $sql .= " ORDER BY m.id DESC LIMIT {$limit}";
         }
 
         $stmt = $db->prepare($sql);

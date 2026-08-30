@@ -83,9 +83,66 @@ export function ChatPage() {
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const isInitialLoadRef = useRef(true);
   const prevMessagesCountRef = useRef(0);
   const userJustSentRef = useRef(false);
+
+  // Global keydown listener: Auto-focus message input when typing
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if (e.ctrlKey || e.altKey || e.metaKey || e.key === 'Escape' || e.key === 'Tab') return;
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || document.activeElement?.isContentEditable) {
+        return;
+      }
+      if (e.key.length === 1 && inputRef.current) {
+        inputRef.current.focus();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
+  const handleImageSelect = async (file) => {
+    if (!file) return;
+    addToast('Uploading image...', 'info');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', 'image');
+
+      const uploaded = await chatService.uploadAttachment(targetConvId, formData);
+      if (uploaded && uploaded.url) {
+        handleSendMessage(null, 'image', uploaded.url);
+        addToast('Image uploaded & sent!', 'success');
+      }
+    } catch (err) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        handleSendMessage(null, 'image', evt.target.result);
+        addToast('Image sent!', 'success');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          handleImageSelect(file);
+        }
+        break;
+      }
+    }
+  };
 
   // Resolve target conversation ID transparently
   let targetConvId = activeConversation?.id;
@@ -538,7 +595,7 @@ export function ChatPage() {
     return searchName.toLowerCase().includes(searchConvQuery.toLowerCase());
   });
 
-  // Render Rich Formatted Message Contents (Polls, GIFs, Stickers, Images, Videos)
+  // Render Rich Formatted Message Contents (Polls, GIFs, Stickers, Images, Videos, Embedded Links)
   const renderRichMessage = (msg) => {
     const text = msg.content || '';
 
@@ -566,7 +623,7 @@ export function ChatPage() {
     if (msg.type === 'gif' || text.endsWith('.gif') || text.includes('giphy.com') || text.includes('tenor.com')) {
       return (
         <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm bg-black/40 my-1">
-          <img src={text} alt="GIF" className="w-full h-auto max-h-72 object-cover" />
+          <img src={text} alt="GIF" referrerPolicy="no-referrer" className="w-full h-auto max-h-72 object-cover" />
         </div>
       );
     }
@@ -575,26 +632,49 @@ export function ChatPage() {
     if (msg.type === 'sticker' || text.includes('twemoji') || text.includes('iconify') || text.includes('/stickers/')) {
       return (
         <div className="p-1 my-1">
-          <img src={text} alt="Sticker" className="w-28 h-28 sm:w-36 sm:h-36 object-contain drop-shadow-md" />
+          <img src={text} alt="Sticker" referrerPolicy="no-referrer" className="w-28 h-28 sm:w-36 sm:h-36 object-contain drop-shadow-md" />
         </div>
       );
     }
 
-    // 4. Image Attachment
-    if (msg.type === 'image' || (text.startsWith('http') && (text.endsWith('.jpg') || text.endsWith('.png') || text.endsWith('.jpeg') || text.endsWith('.webp')))) {
+    // Helper: Detect image extensions, data URIs, or image host domains
+    const isImageSrc = (urlStr) => {
+      if (!urlStr) return false;
+      if (urlStr.startsWith('data:image/') || urlStr.startsWith('blob:')) return true;
+      const lower = urlStr.toLowerCase().trim();
+      const extRegex = /\.(png|jpg|jpeg|gif|webp|svg|bmp|ico|tiff|avif|heic)(\?.*)?$/i;
+      if (extRegex.test(lower)) return true;
+      const imageDomains = ['i.giphy.com', 'media.giphy.com', 'i.imgur.com', 'imgur.com', 'images.unsplash.com', 'res.cloudinary.com', 'i.ibb.co', 'postimg.cc'];
+      return imageDomains.some(domain => lower.includes(domain));
+    };
+
+    // 4. Image Attachment or Direct Image URL
+    if (msg.type === 'image' || isImageSrc(text)) {
       return (
-        <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm my-1">
+        <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm my-1 relative group/img">
           <img
             src={text}
             alt="Image Attachment"
+            referrerPolicy="no-referrer"
             className="w-full h-auto max-h-80 object-cover cursor-pointer hover:opacity-95 transition-opacity"
             onClick={() => window.open(text, '_blank')}
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80';
+            }}
           />
         </div>
       );
     }
 
-    // 5. Video Attachment
+    // 5. Embedded Image URL inside text message
+    const urlMatch = text.match(/(https?:\/\/[^\s]+)/gi);
+    let embeddedImageUrl = null;
+    if (urlMatch) {
+      embeddedImageUrl = urlMatch.find(u => isImageSrc(u));
+    }
+
+    // 6. Video Attachment
     if (msg.type === 'video' || (text.startsWith('http') && (text.endsWith('.mp4') || text.endsWith('.webm')))) {
       return (
         <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm bg-black my-1">
@@ -603,8 +683,23 @@ export function ChatPage() {
       );
     }
 
-    // 6. Default Text Message
-    return <p className="leading-relaxed text-xs sm:text-sm md:text-base whitespace-pre-wrap break-words">{text}</p>;
+    // 7. Default Text Message with optional embedded image preview
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="leading-relaxed text-xs sm:text-sm md:text-base whitespace-pre-wrap break-words">{text}</p>
+        {embeddedImageUrl && (
+          <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm my-1">
+            <img
+              src={embeddedImageUrl}
+              alt="Embedded Image Preview"
+              referrerPolicy="no-referrer"
+              className="w-full h-auto max-h-72 object-cover cursor-pointer hover:opacity-95 transition-opacity"
+              onClick={() => window.open(embeddedImageUrl, '_blank')}
+            />
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -1125,6 +1220,15 @@ export function ChatPage() {
                 <div className="absolute bottom-16 left-2 sm:left-4 p-2 bg-[#131822] border border-white/15 rounded-2xl shadow-2xl flex flex-col gap-1 z-30 min-w-[200px] max-w-[calc(100vw-24px)]">
                   <button
                     type="button"
+                    onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
+                    className="p-2.5 hover:bg-white/10 rounded-xl flex items-center gap-2.5 text-white font-semibold text-xs sm:text-sm"
+                  >
+                    <Image className="w-4 h-4 text-blue-400" />
+                    <span>📷 Upload Image (All Formats)</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => { setIsExperienceLauncherOpen(true); setShowAttachMenu(false); }}
                     className="p-2.5 hover:bg-indigo-600/20 hover:text-indigo-300 rounded-xl flex items-center gap-2.5 text-white font-semibold text-xs sm:text-sm"
                   >
@@ -1172,6 +1276,19 @@ export function ChatPage() {
                 </div>
               )}
 
+              {/* Hidden File Picker for All Image Formats */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.png,.jpg,.jpeg,.gif,.webp,.svg,.bmp,.ico,.tiff,.avif,.heic"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleImageSelect(e.target.files[0]);
+                  }
+                }}
+                className="hidden"
+              />
+
               <div className="flex items-center gap-2 sm:gap-3">
                 <button
                   type="button"
@@ -1181,12 +1298,25 @@ export function ChatPage() {
                   <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
 
-                <input
-                  type="text"
-                  placeholder="Type a message or /command..."
+                <textarea
+                  ref={inputRef}
+                  rows="1"
+                  placeholder="Type a message... (Enter to send, Ctrl+Enter for newline, Ctrl+V to paste image)"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  className="flex-1 px-4 py-3 sm:py-3.5 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm md:text-base text-white focus:outline-none focus:border-indigo-500/50"
+                  onPaste={handlePaste}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                        // Ctrl+Enter or Shift+Enter inserts newline
+                        return;
+                      } else {
+                        e.preventDefault();
+                        handleSendMessage(e);
+                      }
+                    }
+                  }}
+                  className="flex-1 px-4 py-3 sm:py-3.5 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm md:text-base text-white focus:outline-none focus:border-indigo-500/50 resize-none max-h-32"
                 />
 
                 <button
