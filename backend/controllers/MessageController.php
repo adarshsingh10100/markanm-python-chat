@@ -270,6 +270,8 @@ class MessageController {
                 'message_type'    => $msgType,
                 'content_length'  => mb_strlen($content),
             ]);
+        } catch (Throwable $e) {}
+
         // AI & Group Bot Auto-Reply Trigger
         if ($convId && !empty($content)) {
             $lowerContent = strtolower($content);

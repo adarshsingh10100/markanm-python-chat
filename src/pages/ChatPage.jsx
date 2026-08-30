@@ -5,7 +5,7 @@ import {
   BarChart2, Flame, Bookmark, ShieldAlert, MoreVertical, Search,
   ChevronRight, Reply, Trash2, Edit2, PanelRight, ArrowLeft, Palette,
   Gamepad2, Sparkles, Play, CheckCircle2, PanelLeftClose, PanelLeft,
-  ArrowDown, Maximize2, Minimize2, Upload, Video, PhoneCall, Copy, ExternalLink, X, Calendar, Info
+  ArrowDown, Maximize2, Minimize2, Upload, Video, PhoneCall, Copy, ExternalLink, X, Calendar, Info, Users
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useChat } from '../context/ChatContext';
@@ -29,6 +29,7 @@ import { MessageInfoModal } from '../components/MessageInfoModal';
 import { InAppCallModal } from '../components/InAppCallModal';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import { ImageSendConfirmModal } from '../components/ImageSendConfirmModal';
+import { CreateGroupModal } from '../components/CreateGroupModal';
 import { playSendSound, playReceiveSound, initAudioOnUserInteraction } from '../utils/soundUtils';
 import { messageCacheService } from '../services/messageCacheService';
 import { formatMessagePreview, formatTime, formatDateDivider, countryFlag } from '../utils/textUtils';

@@ -14,6 +14,7 @@ class AuthController {
         $displayName = sanitizeInput($body['display_name'] ?? ($body['name'] ?? ''));
         $username = strtolower(trim($body['username'] ?? ''));
         $email = strtolower(trim($body['email'] ?? ''));
+        $email = str_replace('@googlemail.com', '@gmail.com', $email);
         $password = $body['password'] ?? '';
 
         // Optional attribution & referral params
@@ -213,6 +214,7 @@ class AuthController {
     public static function login(): void {
         $body = getRequestBody();
         $identifier = trim($body['identifier'] ?? ($body['login'] ?? ($body['username'] ?? ($body['email'] ?? ''))));
+        $identifier = str_replace('@googlemail.com', '@gmail.com', $identifier);
         $password = $body['password'] ?? '';
 
         if (empty($identifier) || empty($password)) {
@@ -513,6 +515,7 @@ class AuthController {
 
         $googleId  = $payload['sub'] ?? '';
         $email     = strtolower(trim($payload['email'] ?? ''));
+        $email     = str_replace('@googlemail.com', '@gmail.com', $email);
         $name      = trim($payload['name'] ?? '');
         $picture   = $payload['picture'] ?? null;
 
