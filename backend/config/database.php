@@ -14,19 +14,21 @@ class Database {
             $pass = defined('DB_PASS') ? DB_PASS : (getenv('DB_PASS') ?: $_ENV['DB_PASS'] ?: '');
             $charset = 'utf8mb4';
 
-            $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset={$charset}";
+            $hostsToTry = array_unique([$host, 'localhost', '127.0.0.1']);
+            $lastException = null;
 
-            $options = [
-                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                // Enable emulate prepares to allow reusing named parameters in complex queries
-                PDO::ATTR_EMULATE_PREPARES   => true,
-            ];
+            foreach ($hostsToTry as $h) {
+                try {
+                    $dsn = "mysql:host={$h};port={$port};dbname={$dbname};charset={$charset}";
+                    self::$instance = new PDO($dsn, $user, $pass, $options);
+                    break;
+                } catch (PDOException $e) {
+                    $lastException = $e;
+                }
+            }
 
-            try {
-                self::$instance = new PDO($dsn, $user, $pass, $options);
-            } catch (PDOException $e) {
-                jsonError('Database connection error: ' . $e->getMessage(), 500);
+            if (self::$instance === null && $lastException) {
+                jsonError('Database connection error: ' . $lastException->getMessage(), 500);
             }
         }
         return self::$instance;
