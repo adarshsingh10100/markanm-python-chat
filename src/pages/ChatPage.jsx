@@ -165,8 +165,25 @@ export function ChatPage() {
   const loadMessages = async (cid) => {
     if (!cid || (typeof cid === 'number' && (isNaN(cid) || cid <= 0))) return;
     
-    // Do NOT overwrite user's Jump Mode view (top of chat or date jump) during background polling
-    if (isJumpModeRef.current && (userIsScrolledUp || allMessagesRef.current.length > 0)) {
+    // Do NOT overwrite user's Jump Mode view or history reading view during background polling
+    if ((isJumpModeRef.current || userIsScrolledUp) && allMessagesRef.current.length > 0) {
+      // Just check for newer messages without re-rendering history
+      try {
+        const latestId = allMessagesRef.current[allMessagesRef.current.length - 1]?.id || 0;
+        if (typeof latestId === 'number' && latestId > 0) {
+          const checkRes = await chatService.getMessages(cid, latestId, 0, 50);
+          const newMsgs = checkRes.messages || [];
+          if (newMsgs.length > 0) {
+            const existingIds = new Set(allMessagesRef.current.map(m => m.id));
+            const freshNew = newMsgs.filter(m => !existingIds.has(m.id));
+            if (freshNew.length > 0) {
+              allMessagesRef.current = [...allMessagesRef.current, ...freshNew];
+              setDisplayedMessages([...allMessagesRef.current]);
+              setHasUnreadNewMessages(true);
+            }
+          }
+        }
+      } catch (e) {}
       return;
     }
 
@@ -182,15 +199,7 @@ export function ChatPage() {
       const filteredPending = pendingMsgs.filter(m => !existingIds.has(m.id));
 
       const merged = [...fetchedMsgs, ...filteredPending];
-      
-      // Preserve history if user has loaded earlier messages while scrolling up
-      if (userIsScrolledUp && allMessagesRef.current.length > merged.length) {
-        const mergedIds = new Set(merged.map(m => m.id));
-        const historyOnly = allMessagesRef.current.filter(m => !mergedIds.has(m.id));
-        allMessagesRef.current = [...historyOnly, ...merged];
-      } else {
-        allMessagesRef.current = merged;
-      }
+      allMessagesRef.current = merged;
 
       // Detect unread messages
       if (!isInitialLoadRef.current && merged.length > prevMessagesCountRef.current) {
@@ -201,19 +210,15 @@ export function ChatPage() {
 
       prevMessagesCountRef.current = merged.length;
       
-      // Update DOM messages without slicing if user is scrolled up
-      if (userIsScrolledUp || isJumpModeRef.current) {
-        setDisplayedMessages([...allMessagesRef.current]);
-      } else {
-        const shouldScrollBottom = isInitialLoadRef.current || userJustSentRef.current;
-        setDisplayedMessages([...allMessagesRef.current]);
-        if (shouldScrollBottom) {
-          setTimeout(() => {
-            if (messagesContainerRef.current) {
-              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-            }
-          }, 20);
-        }
+      const shouldScrollBottom = isInitialLoadRef.current || userJustSentRef.current;
+      setDisplayedMessages([...allMessagesRef.current]);
+      
+      if (shouldScrollBottom) {
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
+        }, 20);
       }
 
       if (isInitialLoadRef.current) {
@@ -225,7 +230,7 @@ export function ChatPage() {
     } catch (e) {}
   };
 
-  // Load earlier messages when scrolling near top (300 messages per batch)
+  // Load earlier messages when user reaches top of chat (300 messages per batch)
   const loadEarlierMessages = async () => {
     if (loadingMoreTopRef.current || !hasMoreTop || allMessagesRef.current.length === 0) return;
     loadingMoreTopRef.current = true;
@@ -267,11 +272,13 @@ export function ChatPage() {
       }
     } catch (e) {
     } finally {
-      loadingMoreTopRef.current = false;
+      setTimeout(() => {
+        loadingMoreTopRef.current = false;
+      }, 500);
     }
   };
 
-  // Scroll handler: Auto load 300 earlier messages when scrolling top half of chat
+  // Scroll handler: Auto load earlier messages ONLY when reaching near top (scrollTop < 100)
   const handleScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
@@ -284,8 +291,8 @@ export function ChatPage() {
       setHasUnreadNewMessages(false);
     }
 
-    // Auto-load 300 earlier messages when user reaches top half of scroll container
-    if (el.scrollTop < 600 || el.scrollTop < (el.scrollHeight * 0.4)) {
+    // Auto-load 300 earlier messages ONLY when user reaches very top (scrollTop < 100)
+    if (el.scrollTop < 100 && hasMoreTop && !loadingMoreTopRef.current) {
       loadEarlierMessages();
     }
   };
