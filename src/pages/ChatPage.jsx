@@ -913,10 +913,98 @@ export function ChatPage() {
       );
     }
 
-    // 7. Default Text Message with optional embedded image preview
+    // 7. YouTube Video ID & Metadata Link Preview Engine
+    const youtubeRegex = /(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
+    const ytMatch = text ? text.match(youtubeRegex) : null;
+    const youtubeId = msg.metadata?.link_preview?.youtube_id || (ytMatch ? ytMatch[1] : null);
+
+    let linkPreview = msg.metadata?.link_preview;
+    if (typeof msg.metadata === 'string') {
+      try {
+        const parsedM = JSON.parse(msg.metadata);
+        linkPreview = parsedM.link_preview || linkPreview;
+      } catch (e) {}
+    }
+
+    const firstUrlMatch = text ? text.match(/(https?:\/\/[^\s]+)/i) : null;
+    const detectedUrl = linkPreview?.url || (firstUrlMatch ? firstUrlMatch[0] : null);
+
+    let displayCard = linkPreview;
+    if (!displayCard && detectedUrl && !isImageSrc(detectedUrl) && !youtubeId) {
+      try {
+        const parsedHost = new URL(detectedUrl).hostname;
+        displayCard = {
+          url: detectedUrl,
+          title: parsedHost,
+          site_name: parsedHost,
+          favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsedHost)}&sz=64`
+        };
+      } catch (e) {}
+    }
+
+    // 8. Default Text Message with YouTube iframe & WhatsApp Link Preview
     return (
       <div className="flex flex-col gap-2">
         <p className="leading-relaxed text-xs sm:text-sm md:text-base whitespace-pre-wrap break-words">{text}</p>
+
+        {/* YouTube Video Embedded Iframe */}
+        {youtubeId && !msg.is_deleted && (
+          <div className="mt-2 rounded-2xl overflow-hidden border border-white/20 bg-black/80 aspect-video shadow-xl w-full min-w-[240px] max-w-md">
+            <iframe
+              src={`https://www.youtube.com/embed/${youtubeId}`}
+              title="YouTube Video Player"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full border-0"
+            />
+          </div>
+        )}
+
+        {/* WhatsApp-Style Web Link Preview Card (Non-YouTube) */}
+        {displayCard && !youtubeId && !msg.is_deleted && (
+          <a
+            href={displayCard.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 block rounded-2xl overflow-hidden bg-black/40 border border-white/15 hover:border-indigo-400/50 transition-all shadow-lg text-left group/card"
+          >
+            {displayCard.image && (
+              <div className="aspect-video w-full overflow-hidden bg-black/60 relative">
+                <img
+                  src={displayCard.image}
+                  alt={displayCard.title || 'Link Preview'}
+                  className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+              </div>
+            )}
+            <div className="p-3 space-y-1">
+              <div className="flex items-center gap-2">
+                <img
+                  src={displayCard.favicon || `https://www.google.com/s2/favicons?domain=${encodeURIComponent(displayCard.site_name || displayCard.url)}&sz=64`}
+                  alt=""
+                  className="w-3.5 h-3.5 object-contain shrink-0"
+                  onError={(e) => { e.target.style.display = 'none'; }}
+                />
+                <span className="text-[10px] font-mono font-semibold text-gray-400 truncate">
+                  {displayCard.site_name || displayCard.url}
+                </span>
+                <ExternalLink className="w-3 h-3 text-gray-400 ml-auto shrink-0" />
+              </div>
+              {displayCard.title && (
+                <h4 className="font-bold text-xs text-white line-clamp-1 group-hover/card:text-indigo-300 transition-colors">
+                  {displayCard.title}
+                </h4>
+              )}
+              {displayCard.description && (
+                <p className="text-[11px] text-gray-300 line-clamp-2 leading-snug">
+                  {displayCard.description}
+                </p>
+              )}
+            </div>
+          </a>
+        )}
+
         {embeddedImageUrl && (
           <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm my-1">
             <img
