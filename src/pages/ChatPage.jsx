@@ -29,7 +29,7 @@ import { MessageInfoModal } from '../components/MessageInfoModal';
 import { InAppCallModal } from '../components/InAppCallModal';
 import { ImagePreviewModal } from '../components/ImagePreviewModal';
 import { ImageSendConfirmModal } from '../components/ImageSendConfirmModal';
-import { playSendSound, playReceiveSound } from '../utils/soundUtils';
+import { playSendSound, playReceiveSound, initAudioOnUserInteraction } from '../utils/soundUtils';
 import { formatMessagePreview, formatTime, formatDateDivider, countryFlag } from '../utils/textUtils';
 import { encodeId, decodeId } from '../utils/hashUtils';
 
@@ -98,6 +98,7 @@ export function ChatPage() {
 
   // Global keydown listener: Auto-focus message input when typing
   useEffect(() => {
+    initAudioOnUserInteraction();
     const handleGlobalKeyDown = (e) => {
       if (e.ctrlKey || e.altKey || e.metaKey || e.key === 'Escape' || e.key === 'Tab') return;
       const activeTag = document.activeElement?.tagName?.toLowerCase();
@@ -287,7 +288,7 @@ export function ChatPage() {
       // Detect unread messages & play receive audio chime
       if (!isInitialLoadRef.current && merged.length > prevMessagesCountRef.current) {
         const newest = merged[merged.length - 1];
-        if (newest && newest.sender_id !== user?.id && !newest.is_mine) {
+        if (newest && newest.sender_id != user?.id && !newest.is_mine) {
           playReceiveSound();
         }
         if (userIsScrolledUp && !userJustSentRef.current) {
