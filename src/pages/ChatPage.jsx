@@ -530,9 +530,11 @@ export function ChatPage() {
 
   const scrollToBottom = () => {
     isJumpModeRef.current = false;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     setUserIsScrolledUp(false);
     setHasUnreadNewMessages(false);
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   };
 
   const handleJumpToTop = async () => {
@@ -1130,7 +1132,7 @@ export function ChatPage() {
       </div>
 
       {/* 2. Main Conversation Stream Column (Full Focus Mode Supported) */}
-      <div className={`flex-1 h-full flex-col min-w-0 relative ${
+      <div className={`flex-1 h-full flex-col min-w-0 min-h-0 relative overflow-hidden ${
         activeConversation ? 'flex' : 'hidden md:flex'
       }`}>
         {!activeConversation ? (

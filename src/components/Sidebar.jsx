@@ -65,12 +65,13 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
   };
 
   return (
-    <aside className={`h-full glass-panel flex flex-col justify-between p-3 border-r border-white/10 shrink-0 select-none z-20 transition-all duration-300 ${
+    <aside className={`h-full glass-panel flex flex-col justify-between p-3 border-r border-white/10 shrink-0 select-none z-20 transition-all duration-300 overflow-hidden ${
       isCollapsed ? 'w-16' : 'w-16 md:w-64'
     }`}>
-      {/* Brand Header & Toggle */}
-      <div>
-        <div className="flex items-center justify-between px-2 py-3 mb-4">
+      {/* Scrollable Nav Section */}
+      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar pr-0.5 flex flex-col gap-2">
+        {/* Brand Header & Toggle */}
+        <div className="flex items-center justify-between px-2 py-3 mb-2 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
               <Sparkles className="w-6 h-6 text-white" />
@@ -125,9 +126,9 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
         </nav>
       </div>
 
-      {/* User Profile Footer */}
+      {/* User Profile & Log Out Footer (Pinned) */}
       {user && (
-        <div className="pt-4 border-t border-white/10 flex flex-col gap-2">
+        <div className="shrink-0 pt-3 border-t border-white/10 flex flex-col gap-1.5 mt-auto">
           <div
             onClick={() => navigate('/profile')}
             className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-colors"
@@ -148,10 +149,11 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
 
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-semibold"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-semibold w-full"
+            title="Log Out"
           >
-            <LogOut className="w-4 h-4 shrink-0" />
-            {!isCollapsed && <span className="hidden md:inline">Log Out</span>}
+            <LogOut className="w-4 h-4 shrink-0 text-red-400" />
+            {!isCollapsed && <span className="hidden md:inline text-red-300 font-bold">Log Out</span>}
           </button>
         </div>
       )}
