@@ -119,11 +119,10 @@ class AuthController {
 
             $db->commit();
 
-            // Track attribution log event
+            // Track attribution log event — silent, never crash registration
             $eventType = $refUserId ? 'signup_via_invite' : 'signup_direct';
-            TrackingController::recordEvent($eventType, $userId, $refUserId, $inviteCode, $signupSourceLink);
-            // Log activity with IP geolocation
-            TrackingController::logActivity('register', $userId, ['source' => $signupSourceLink]);
+            try { TrackingController::recordEvent($eventType, $userId, $refUserId, $inviteCode, $signupSourceLink); } catch (Throwable $te) {}
+            try { TrackingController::logActivity('register', $userId, ['source' => $signupSourceLink]); } catch (Throwable $te) {}
 
             // Dispatch OTP verification code via PHPMailer
             Mailer::sendOTPEmail($email, $displayName, $otpCode);
@@ -234,56 +233,58 @@ class AuthController {
             jsonError('Invalid credentials.', 401);
         }
 
-        $token = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', strtotime('+' . TOKEN_EXPIRY_DAYS . ' days'));
-        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
-
-        $sessStmt = $db->prepare('
-            INSERT INTO sessions (user_id, token, user_agent, ip_address, expires_at)
-            VALUES (:user_id, :token, :user_agent, :ip_address, :expires_at)
-        ');
-        $sessStmt->execute([
-            'user_id' => $user['id'],
-            'token' => $token,
-            'user_agent' => mb_substr($userAgent, 0, 255),
-            'ip_address' => $ipAddress,
-            'expires_at' => $expiresAt
-        ]);
-
-        $_SESSION['auth_token'] = $token;
-
-        // Log login event with IP geo
-        TrackingController::recordEvent('login', (int)$user['id'], null, null, sanitizeInput($body['landing_url'] ?? '/login'));
-        TrackingController::logActivity('login', (int)$user['id']);
-
-        // Fetch updated geo info for response
-        $geoRow = [];
         try {
-            $geoStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
-            $geoStmt->execute(['uid' => $user['id']]);
-            $geoRow = $geoStmt->fetch() ?: [];
-        } catch (Throwable $e) {
-            // Ignore if geo columns don't exist in schema yet
-        }
+            $token = bin2hex(random_bytes(32));
+            $expiresAt = date('Y-m-d H:i:s', strtotime('+' . TOKEN_EXPIRY_DAYS . ' days'));
+            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+            $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
 
-        jsonResponse([
-            'success' => true,
-            'token' => $token,
-            'user' => [
-                'id'           => (int)$user['id'],
-                'display_name' => decodeOutput($user['display_name']),
-                'username'     => $user['username'],
-                'email'        => $user['email'],
-                'avatar_url'   => $user['avatar_url'],
-                'bio'          => decodeOutput($user['bio']),
-                'is_verified'  => (bool)$user['is_verified'],
-                'country_code' => $geoRow['country_code'] ?? null,
-                'country_name' => $geoRow['country_name'] ?? null,
-                'city'         => $geoRow['city'] ?? null,
-                'timezone'     => $geoRow['timezone'] ?? 'Asia/Kolkata',
-            ]
-        ]);
+            $sessStmt = $db->prepare('
+                INSERT INTO sessions (user_id, token, user_agent, ip_address, expires_at)
+                VALUES (:user_id, :token, :user_agent, :ip_address, :expires_at)
+            ');
+            $sessStmt->execute([
+                'user_id'    => $user['id'],
+                'token'      => $token,
+                'user_agent' => mb_substr($userAgent, 0, 255),
+                'ip_address' => $ipAddress,
+                'expires_at' => $expiresAt
+            ]);
+
+            $_SESSION['auth_token'] = $token;
+
+            // Silent tracking — never crash login
+            try { TrackingController::recordEvent('login', (int)$user['id'], null, null, sanitizeInput($body['landing_url'] ?? '/login')); } catch (Throwable $e) {}
+            try { TrackingController::logActivity('login', (int)$user['id']); } catch (Throwable $e) {}
+
+            // Optionally fetch geo info
+            $geoRow = [];
+            try {
+                $geoStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
+                $geoStmt->execute(['uid' => $user['id']]);
+                $geoRow = $geoStmt->fetch() ?: [];
+            } catch (Throwable $e) {}
+
+            jsonResponse([
+                'success' => true,
+                'token'   => $token,
+                'user'    => [
+                    'id'           => (int)$user['id'],
+                    'display_name' => decodeOutput($user['display_name']),
+                    'username'     => $user['username'],
+                    'email'        => $user['email'],
+                    'avatar_url'   => $user['avatar_url'],
+                    'bio'          => decodeOutput($user['bio']),
+                    'is_verified'  => (bool)$user['is_verified'],
+                    'country_code' => $geoRow['country_code'] ?? null,
+                    'country_name' => $geoRow['country_name'] ?? null,
+                    'city'         => $geoRow['city'] ?? null,
+                    'timezone'     => $geoRow['timezone'] ?? 'Asia/Kolkata',
+                ]
+            ]);
+        } catch (Throwable $e) {
+            jsonError('Login failed: ' . $e->getMessage(), 500);
+        }
     }
 
     /**
@@ -459,7 +460,9 @@ class AuthController {
 
         // Verify token is for our client and not expired
         $allowedClients = [
-            getenv('GOOGLE_CLIENT_ID') ?: '755697154434-6epavkdgts6c0vaa2iqo69pmpkd4nqdf.apps.googleusercontent.com'
+            '794034958283-kaegi75d0iu7kuinp1f8gm27aqilphbo.apps.googleusercontent.com',
+            '755697154434-6epavkdgts6c0vaa2iqo69pmpkd4nqdf.apps.googleusercontent.com',
+            getenv('GOOGLE_CLIENT_ID') ?: ''
         ];
 
         if (!in_array($payload['aud'] ?? '', $allowedClients, true)) {

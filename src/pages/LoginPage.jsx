@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { OTPModal } from '../components/OTPModal';
 
-const GOOGLE_CLIENT_ID = '755697154434-6epavkdgts6c0vaa2iqo69pmpkd4nqdf.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '794034958283-kaegi75d0iu7kuinp1f8gm27aqilphbo.apps.googleusercontent.com';
 
 export function LoginPage() {
   const { login, googleLogin } = useAuth();

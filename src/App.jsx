@@ -12,6 +12,7 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { HomePage } from './pages/HomePage';
 import { ProfileCompletionModal } from './components/ProfileCompletionModal';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChatPage } from './pages/ChatPage';
@@ -75,7 +76,7 @@ function ProtectedLayout() {
         {/* Main Workspace Area */}
         <main className="flex-1 h-full flex flex-col min-w-0 overflow-hidden relative">
           <Routes>
-            <Route path="/" element={<Navigate to="/discover" replace />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route
               path="/dashboard"
               element={
@@ -155,6 +156,9 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <Routes>
+          {/* Landing/Home Page — public */}
+          <Route path="/" element={<HomePage />} />
+
           {/* Public Auth Routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />

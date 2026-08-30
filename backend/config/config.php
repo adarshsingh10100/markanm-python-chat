@@ -46,6 +46,8 @@ if (!defined('DB_PASS')) define('DB_PASS', getenv('DB_PASS') ?: $_ENV['DB_PASS']
 // App Settings
 if (!defined('APP_NAME')) define('APP_NAME', 'MarkanM Chat');
 if (!defined('APP_URL')) define('APP_URL', getenv('APP_URL') ?: $_ENV['APP_URL'] ?: 'https://chat.markanm.com');
+if (!defined('GOOGLE_CLIENT_ID')) define('GOOGLE_CLIENT_ID', getenv('GOOGLE_CLIENT_ID') ?: $_ENV['GOOGLE_CLIENT_ID'] ?: '794034958283-kaegi75d0iu7kuinp1f8gm27aqilphbo.apps.googleusercontent.com');
+if (!defined('GOOGLE_CLIENT_SECRET')) define('GOOGLE_CLIENT_SECRET', getenv('GOOGLE_CLIENT_SECRET') ?: $_ENV['GOOGLE_CLIENT_SECRET'] ?: '');
 define('UPLOAD_DIR', __DIR__ . '/../uploads/');
 define('UPLOAD_URL_PREFIX', '/backend/uploads/');
 define('MAX_UPLOAD_SIZE', 5 * 1024 * 1024); // 5MB limit
