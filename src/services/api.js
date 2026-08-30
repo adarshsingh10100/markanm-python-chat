@@ -33,7 +33,12 @@ export async function request(endpoint, options = {}) {
   try {
     data = JSON.parse(rawText);
   } catch (e) {
-    data = { success: false, error: response.ok ? 'Unexpected response format' : `Server Error (${response.status})` };
+    console.error('[API Parse Error] Raw Server Response:', rawText);
+    const textSnippet = rawText.replace(/<[^>]*>?/gm, '').trim().substring(0, 150);
+    data = {
+      success: false,
+      error: textSnippet || (response.ok ? 'Unexpected response format' : `Server Error (${response.status})`)
+    };
   }
 
   if (!response.ok || data.success === false) {

@@ -60,6 +60,9 @@ define('TOKEN_EXPIRY_DAYS', 30);
  * Standard JSON response helper
  */
 function jsonResponse($data = [], int $statusCode = 200): void {
+    if (ob_get_level() > 0) {
+        @ob_clean();
+    }
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

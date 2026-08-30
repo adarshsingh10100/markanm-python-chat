@@ -1,5 +1,9 @@
 <?php
 // MarkanM Chat REST API Main Entry Point & Router
+ob_start();
+ini_set('display_errors', '0');
+error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED);
+
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/middleware/CORSMiddleware.php';
 
@@ -62,9 +66,9 @@ require_once __DIR__ . '/controllers/ExperienceController.php';
 require_once __DIR__ . '/controllers/BotController.php';
 require_once __DIR__ . '/controllers/BotPlatformController.php';
 
-// Extract URI path
-$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$method = $_SERVER['REQUEST_METHOD'];
+// Extract URI path or endpoint query parameter
+$requestUri = $_GET['endpoint'] ?? parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '/';
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // Normalize request path relative to /backend/api or /api
 $basePaths = ['/backend/api', '/api'];
