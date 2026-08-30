@@ -27,6 +27,9 @@ import { GoogleMeetModal } from '../components/GoogleMeetModal';
 import { JumpToDateModal } from '../components/JumpToDateModal';
 import { MessageInfoModal } from '../components/MessageInfoModal';
 import { InAppCallModal } from '../components/InAppCallModal';
+import { ImagePreviewModal } from '../components/ImagePreviewModal';
+import { ImageSendConfirmModal } from '../components/ImageSendConfirmModal';
+import { playSendSound, playReceiveSound } from '../utils/soundUtils';
 import { formatMessagePreview, formatTime, formatDateDivider, countryFlag } from '../utils/textUtils';
 import { encodeId, decodeId } from '../utils/hashUtils';
 
@@ -64,6 +67,10 @@ export function ChatPage() {
   const [isSearchingInChat, setIsSearchingInChat] = useState(false);
   const [selectedInfoMsg, setSelectedInfoMsg] = useState(null);
   const [activeMeetCallUrl, setActiveMeetCallUrl] = useState(null);
+  const [fullscreenImageUrl, setFullscreenImageUrl] = useState(null);
+  const [stagedImageFile, setStagedImageFile] = useState(null);
+  const [stagedImagePreviewUrl, setStagedImagePreviewUrl] = useState(null);
+  const [isImageConfirmOpen, setIsImageConfirmOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
 
   const touchStartRef = useRef(null);
@@ -105,39 +112,42 @@ export function ChatPage() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  const isUploadingImageRef = useRef(false);
-
-  const handleImageSelect = async (file) => {
-    if (!file || isUploadingImageRef.current) return;
-    isUploadingImageRef.current = true;
-    addToast('Uploading image...', 'info');
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', 'image');
-
-      const uploaded = await chatService.uploadAttachment(targetConvId, formData);
-      if (uploaded && uploaded.url) {
-        handleSendMessage(null, 'image', uploaded.url);
-        addToast('Image uploaded & sent!', 'success');
-      } else {
-        throw new Error('No URL returned from server');
+  // Stage selected/pasted image for pre-send confirmation preview modal
+  const handleImageSelect = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      if (evt.target?.result) {
+        setStagedImageFile(file);
+        setStagedImagePreviewUrl(evt.target.result);
+        setIsImageConfirmOpen(true);
       }
-    } catch (err) {
-      // Fallback: Convert to Base64 data URL
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        if (evt.target?.result) {
-          handleSendMessage(null, 'image', evt.target.result);
-          addToast('Image sent!', 'success');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Perform actual upload & send upon user confirmation in modal
+  const executeConfirmedImageSend = async (file, previewDataUrl, caption) => {
+    addToast('Uploading image...', 'info');
+    try {
+      let finalUrl = previewDataUrl;
+      if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', 'image');
+        const uploaded = await chatService.uploadAttachment(targetConvId, formData);
+        if (uploaded && uploaded.url) {
+          finalUrl = uploaded.url;
         }
-      };
-      reader.readAsDataURL(file);
-    } finally {
-      setTimeout(() => {
-        isUploadingImageRef.current = false;
-      }, 1000);
+      }
+      
+      const content = caption ? `${finalUrl}\n${caption}` : finalUrl;
+      await handleSendMessage(null, 'image', content);
+      addToast('Image sent!', 'success');
+    } catch (err) {
+      const content = caption ? `${previewDataUrl}\n${caption}` : previewDataUrl;
+      await handleSendMessage(null, 'image', content);
+      addToast('Image sent!', 'success');
     }
   };
 
@@ -274,8 +284,12 @@ export function ChatPage() {
       const merged = [...fetchedMsgs, ...filteredPending];
       allMessagesRef.current = merged;
 
-      // Detect unread messages
+      // Detect unread messages & play receive audio chime
       if (!isInitialLoadRef.current && merged.length > prevMessagesCountRef.current) {
+        const newest = merged[merged.length - 1];
+        if (newest && newest.sender_id !== user?.id && !newest.is_mine) {
+          playReceiveSound();
+        }
         if (userIsScrolledUp && !userJustSentRef.current) {
           setHasUnreadNewMessages(true);
         }
@@ -575,6 +589,9 @@ export function ChatPage() {
       status: 'sending'
     };
 
+    // Play outgoing 1-second audio send chime
+    playSendSound();
+
     // Instant UI feedback (0ms delay)
     setNewMessage('');
     setReplyingTo(null);
@@ -695,7 +712,7 @@ export function ChatPage() {
             alt="Image Attachment"
             referrerPolicy="no-referrer"
             className="w-full h-auto max-h-80 object-cover cursor-pointer hover:opacity-95 transition-opacity"
-            onClick={() => window.open(fullUrl, '_blank')}
+            onClick={() => setFullscreenImageUrl(fullUrl)}
           />
         </div>
       );
@@ -724,11 +741,11 @@ export function ChatPage() {
         {embeddedImageUrl && (
           <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm my-1">
             <img
-              src={embeddedImageUrl}
+              src={getFullMediaUrl(embeddedImageUrl)}
               alt="Embedded Image Preview"
               referrerPolicy="no-referrer"
               className="w-full h-auto max-h-72 object-cover cursor-pointer hover:opacity-95 transition-opacity"
-              onClick={() => window.open(embeddedImageUrl, '_blank')}
+              onClick={() => setFullscreenImageUrl(getFullMediaUrl(embeddedImageUrl))}
             />
           </div>
         )}
@@ -1552,6 +1569,22 @@ export function ChatPage() {
           handleSendMessage(null, 'call', '🔴 Video Call Ended');
           setActiveMeetCallUrl(null);
         }}
+      />
+      <ImagePreviewModal
+        isOpen={!!fullscreenImageUrl}
+        onClose={() => setFullscreenImageUrl(null)}
+        imageUrl={fullscreenImageUrl}
+      />
+      <ImageSendConfirmModal
+        isOpen={isImageConfirmOpen}
+        onClose={() => {
+          setIsImageConfirmOpen(false);
+          setStagedImageFile(null);
+          setStagedImagePreviewUrl(null);
+        }}
+        file={stagedImageFile}
+        imagePreviewUrl={stagedImagePreviewUrl}
+        onConfirmSend={executeConfirmedImageSend}
       />
     </div>
   );
