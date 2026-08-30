@@ -482,10 +482,10 @@ class MessageController {
 
         $stmt = $db->prepare('
             INSERT INTO user_presence (user_id, status, typing_conversation_id, typing_updated_at)
-            VALUES (:uid, "online", :cid, NOW())
-            ON DUPLICATE KEY UPDATE typing_conversation_id = :cid, typing_updated_at = NOW()
+            VALUES (:uid, "online", :cid1, NOW())
+            ON DUPLICATE KEY UPDATE typing_conversation_id = :cid2, typing_updated_at = NOW()
         ');
-        $stmt->execute(['uid' => $currentUser['id'], 'cid' => $targetConv]);
+        $stmt->execute(['uid' => $currentUser['id'], 'cid1' => $targetConv, 'cid2' => $targetConv]);
 
         jsonResponse(['success' => true]);
     }

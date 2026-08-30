@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { request } from '../services/api';
 
 export function SEOHead() {
   const [branding, setBranding] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
-    fetch('/api/public/branding')
-      .then(res => res.json())
+    request('/public/branding')
       .then(data => {
         if (isMounted && data.success && data.branding) {
           setBranding(data.branding);
