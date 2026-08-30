@@ -694,26 +694,44 @@ export function ChatPage() {
     // Helper: Detect image extensions, data URIs, or image host domains
     const isImageSrc = (urlStr) => {
       if (!urlStr) return false;
-      if (urlStr.startsWith('data:image/') || urlStr.startsWith('blob:')) return true;
-      const lower = urlStr.toLowerCase().trim();
+      const firstLine = urlStr.split('\n')[0].trim();
+      if (firstLine.startsWith('data:image/') || firstLine.startsWith('blob:')) return true;
+      const lower = firstLine.toLowerCase();
       const extRegex = /\.(png|jpg|jpeg|gif|webp|svg|bmp|ico|tiff|avif|heic)(\?.*)?$/i;
       if (extRegex.test(lower)) return true;
-      const imageDomains = ['i.giphy.com', 'media.giphy.com', 'i.imgur.com', 'imgur.com', 'images.unsplash.com', 'res.cloudinary.com', 'i.ibb.co', 'postimg.cc'];
+      const imageDomains = ['/uploads/', '/attachments/', 'i.giphy.com', 'media.giphy.com', 'i.imgur.com', 'imgur.com', 'images.unsplash.com', 'res.cloudinary.com', 'i.ibb.co', 'postimg.cc'];
       return imageDomains.some(domain => lower.includes(domain));
+    };
+
+    // Helper: Extract clean image URL line and optional caption text
+    const extractImageAndCaption = (contentStr) => {
+      if (!contentStr) return { imgUrl: '', captionText: '' };
+      const lines = contentStr.split('\n');
+      const imgUrl = lines[0].trim();
+      const captionText = lines.slice(1).join('\n').trim();
+      return { imgUrl, captionText };
     };
 
     // 4. Image Attachment or Direct Image URL
     if (msg.type === 'image' || isImageSrc(text)) {
-      const fullUrl = getFullMediaUrl(text);
+      const { imgUrl, captionText } = extractImageAndCaption(text);
+      const fullUrl = getFullMediaUrl(imgUrl);
       return (
-        <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm my-1 relative group/img">
-          <img
-            src={fullUrl}
-            alt="Image Attachment"
-            referrerPolicy="no-referrer"
-            className="w-full h-auto max-h-80 object-cover cursor-pointer hover:opacity-95 transition-opacity"
-            onClick={() => setFullscreenImageUrl(fullUrl)}
-          />
+        <div className="flex flex-col gap-1.5 my-1 max-w-xs sm:max-w-sm">
+          <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg relative group/img bg-black/40">
+            <img
+              src={fullUrl}
+              alt="Image Attachment"
+              referrerPolicy="no-referrer"
+              className="w-full h-auto max-h-80 object-cover cursor-pointer hover:opacity-95 transition-opacity"
+              onClick={() => setFullscreenImageUrl(fullUrl)}
+            />
+          </div>
+          {captionText && (
+            <p className="px-1 text-xs sm:text-sm text-gray-200 leading-relaxed whitespace-pre-wrap break-words">
+              {captionText}
+            </p>
+          )}
         </div>
       );
     }
