@@ -25,6 +25,8 @@ class Database {
 
             try {
                 self::$instance = new PDO($dsn, $user, $pass, $options);
+                // Ensure content column is LONGTEXT to support high-res Base64 images without truncation
+                @self::$instance->exec('ALTER TABLE messages MODIFY COLUMN content LONGTEXT');
             } catch (PDOException $e) {
                 jsonError('Database connection error: ' . $e->getMessage(), 500);
             }

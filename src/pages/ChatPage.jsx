@@ -726,6 +726,14 @@ export function ChatPage() {
               referrerPolicy="no-referrer"
               className="w-full h-auto max-h-80 object-cover cursor-pointer hover:opacity-95 transition-opacity"
               onClick={() => setFullscreenImageUrl(fullUrl)}
+              onError={(e) => {
+                const currentSrc = e.target.src;
+                if (currentSrc.includes('/backend/uploads/')) {
+                  e.target.src = currentSrc.replace('/backend/uploads/', '/uploads/');
+                } else if (currentSrc.includes('/uploads/') && !currentSrc.includes('/backend/uploads/')) {
+                  e.target.src = currentSrc.replace('/uploads/', '/backend/uploads/');
+                }
+              }}
             />
           </div>
           {captionText && (
