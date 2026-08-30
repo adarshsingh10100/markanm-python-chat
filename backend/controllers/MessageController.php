@@ -386,6 +386,18 @@ class MessageController {
         $isTyping = !empty($body['is_typing']);
 
         $db = Database::getConnection();
+
+        // Privacy check: If user turned off typing indicator, do not update typing status
+        $userStmt = $db->prepare('SELECT privacy_settings FROM users WHERE id = :uid LIMIT 1');
+        $userStmt->execute(['uid' => $currentUser['id']]);
+        $uRow = $userStmt->fetch();
+        if ($uRow && !empty($uRow['privacy_settings'])) {
+            $privacy = json_decode($uRow['privacy_settings'], true);
+            if (($privacy['typing_status'] ?? 'everyone') === 'nobody') {
+                $isTyping = false;
+            }
+        }
+
         $targetConv = $isTyping ? $convId : null;
 
         $stmt = $db->prepare('

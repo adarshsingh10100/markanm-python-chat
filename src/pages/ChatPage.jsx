@@ -171,7 +171,7 @@ export function ChatPage() {
     }
 
     try {
-      const res = await chatService.getMessages(cid, 0, 0, 150);
+      const res = await chatService.getMessages(cid, 0, 0, 300);
       const fetchedMsgs = res.messages || [];
 
       // Preserve any pending optimistic messages that are still sending
@@ -200,30 +200,32 @@ export function ChatPage() {
       }
 
       prevMessagesCountRef.current = merged.length;
-      updateDisplayedWindow(isInitialLoadRef.current || userJustSentRef.current);
+      
+      // Update DOM messages without slicing if user is scrolled up
+      if (userIsScrolledUp || isJumpModeRef.current) {
+        setDisplayedMessages([...allMessagesRef.current]);
+      } else {
+        const shouldScrollBottom = isInitialLoadRef.current || userJustSentRef.current;
+        setDisplayedMessages([...allMessagesRef.current]);
+        if (shouldScrollBottom) {
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+          }, 20);
+        }
+      }
 
       if (isInitialLoadRef.current) {
-        setTimeout(() => {
-          if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-          }
-          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-        }, 15);
         isInitialLoadRef.current = false;
       }
       if (userJustSentRef.current) {
-        setTimeout(() => {
-          if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-          }
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 15);
         userJustSentRef.current = false;
       }
     } catch (e) {}
   };
 
-  // Load earlier messages when scrolling near top (150 messages per batch)
+  // Load earlier messages when scrolling near top (300 messages per batch)
   const loadEarlierMessages = async () => {
     if (loadingMoreTopRef.current || !hasMoreTop || allMessagesRef.current.length === 0) return;
     loadingMoreTopRef.current = true;
@@ -239,10 +241,10 @@ export function ChatPage() {
     const oldScrollTop = container ? container.scrollTop : 0;
 
     try {
-      const res = await chatService.getMessages(targetConvId, 0, oldestMsg.id, 150);
+      const res = await chatService.getMessages(targetConvId, 0, oldestMsg.id, 300);
       const earlierMsgs = res.messages || [];
 
-      if (earlierMsgs.length < 150) {
+      if (earlierMsgs.length < 300) {
         setHasMoreTop(false);
       }
 
@@ -269,21 +271,21 @@ export function ChatPage() {
     }
   };
 
-  // Scroll handler: Auto load 150 earlier messages when scrolling top half of chat
+  // Scroll handler: Auto load 300 earlier messages when scrolling top half of chat
   const handleScroll = () => {
     const el = messagesContainerRef.current;
     if (!el) return;
 
     const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isScrolledUp = distanceToBottom > 100;
+    const isScrolledUp = distanceToBottom > 150;
     setUserIsScrolledUp(isScrolledUp);
 
     if (!isScrolledUp) {
       setHasUnreadNewMessages(false);
     }
 
-    // Auto-load 150 earlier messages when user reaches top half of scroll container
-    if (el.scrollTop < 400 || el.scrollTop < (el.scrollHeight * 0.35)) {
+    // Auto-load 300 earlier messages when user reaches top half of scroll container
+    if (el.scrollTop < 600 || el.scrollTop < (el.scrollHeight * 0.4)) {
       loadEarlierMessages();
     }
   };
@@ -739,8 +741,19 @@ export function ChatPage() {
                     <h2 className="text-xs sm:text-base font-bold text-white truncate">
                       {activeConversation.name || activeConversation.counterpart?.display_name}
                     </h2>
-                    <p className="text-[11px] sm:text-xs text-gray-400 truncate">
-                      {activeConversation.is_group ? `${activeConversation.member_count || 2} members` : (activeConversation.counterpart?.is_online ? 'Active now' : 'Offline')}
+                    <p className="text-[11px] sm:text-xs text-gray-400 truncate flex items-center gap-1.5">
+                      {activeConversation.counterpart?.is_typing ? (
+                        <span className="text-indigo-400 font-bold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-ping" />
+                          <span>typing...</span>
+                        </span>
+                      ) : activeConversation.is_group ? (
+                        `${activeConversation.member_count || 2} members`
+                      ) : activeConversation.counterpart?.is_online ? (
+                        <span className="text-emerald-400 font-semibold">Active now</span>
+                      ) : (
+                        'Offline'
+                      )}
                     </p>
                   </div>
                 </div>

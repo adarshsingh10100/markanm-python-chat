@@ -20,6 +20,7 @@ export function SettingsPage() {
   // Privacy states
   const [connectionRequests, setConnectionRequests] = useState('everyone');
   const [messaging, setMessaging] = useState('everyone');
+  const [typingStatus, setTypingStatus] = useState('everyone');
   const [showOnlineStatus, setShowOnlineStatus] = useState(true);
   const [showLastSeen, setShowLastSeen] = useState(true);
   const [savingPrivacy, setSavingPrivacy] = useState(false);
@@ -35,6 +36,7 @@ export function SettingsPage() {
       if (res.settings) {
         setConnectionRequests(res.settings.connection_requests || 'everyone');
         setMessaging(res.settings.messaging || 'everyone');
+        setTypingStatus(res.settings.typing_status || 'everyone');
         setShowOnlineStatus(res.settings.show_online_status ?? true);
         setShowLastSeen(res.settings.show_last_seen ?? true);
       }
@@ -63,6 +65,7 @@ export function SettingsPage() {
         body: {
           connection_requests: connectionRequests,
           messaging,
+          typing_status: typingStatus,
           show_online_status: showOnlineStatus,
           show_last_seen: showLastSeen
         }
@@ -241,6 +244,18 @@ export function SettingsPage() {
                   <option value="everyone" className="bg-[#131822] text-white">Everyone</option>
                   <option value="connections" className="bg-[#131822] text-white">Connections only</option>
                   <option value="nobody" className="bg-[#131822] text-white">Nobody</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Who can see when I am typing?</label>
+                <select
+                  value={typingStatus}
+                  onChange={(e) => setTypingStatus(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                >
+                  <option value="everyone" className="bg-[#131822] text-white">Everyone (Show typing indicator)</option>
+                  <option value="nobody" className="bg-[#131822] text-white">Nobody (Hide typing indicator)</option>
                 </select>
               </div>
             </div>
