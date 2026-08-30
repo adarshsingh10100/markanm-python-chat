@@ -70,6 +70,7 @@ class AdminController {
         $search = trim($_GET['search'] ?? $_GET['q'] ?? '');
         $status = strtolower(trim($_GET['status'] ?? ''));
         $role = strtolower(trim($_GET['role'] ?? ''));
+        $accountType = strtolower(trim($_GET['type'] ?? $_GET['account_type'] ?? 'all'));
         $page = max(1, (int)($_GET['page'] ?? 1));
         $limit = min(100, max(1, (int)($_GET['limit'] ?? 20)));
         $offset = ($page - 1) * $limit;
@@ -78,8 +79,12 @@ class AdminController {
         $params = [];
 
         if (!empty($search)) {
-            $where[] = '(display_name LIKE :q OR username LIKE :q OR email LIKE :q OR last_ip LIKE :q)';
-            $params['q'] = '%' . $search . '%';
+            $where[] = '(display_name LIKE :q1 OR username LIKE :q2 OR email LIKE :q3 OR last_ip LIKE :q4)';
+            $sTerm = '%' . $search . '%';
+            $params['q1'] = $sTerm;
+            $params['q2'] = $sTerm;
+            $params['q3'] = $sTerm;
+            $params['q4'] = $sTerm;
         }
 
         if (in_array($status, ['active', 'suspended', 'banned'], true)) {
@@ -92,11 +97,17 @@ class AdminController {
             $params['role'] = $role;
         }
 
+        if ($accountType === 'human') {
+            $where[] = '(is_bot = 0 AND is_ai = 0 AND email NOT LIKE "%@ai.markanm.com")';
+        } else if ($accountType === 'bot') {
+            $where[] = '(is_bot = 1 OR is_ai = 1 OR email LIKE "%@ai.markanm.com")';
+        }
+
         $whereSql = implode(' AND ', $where);
 
         $sql = "
             SELECT id, display_name, username, email, role, account_status, suspended_until, suspension_reason,
-                   avatar_url, is_verified, is_bot, last_ip, country_code, country_name, city, created_at
+                   avatar_url, is_verified, is_bot, is_ai, last_ip, country_code, country_name, city, created_at
             FROM users
             WHERE {$whereSql}
             ORDER BY id DESC

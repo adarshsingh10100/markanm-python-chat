@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Users, Search, Filter, Shield, AlertTriangle, Eye, Lock, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, Search, Filter, Shield, AlertTriangle, Eye, Lock, CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Bot, UserCheck } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -15,6 +15,7 @@ export function AdminUsersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'human' | 'bot'
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, total_pages: 1, total: 0 });
 
@@ -33,6 +34,7 @@ export function AdminUsersPage() {
         search,
         status: statusFilter,
         role: roleFilter,
+        type: typeFilter,
         page
       });
       if (res.users) {
@@ -48,7 +50,7 @@ export function AdminUsersPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [search, statusFilter, roleFilter, page]);
+  }, [search, statusFilter, roleFilter, typeFilter, page]);
 
   const handleAction = async (e) => {
     e.preventDefault();
@@ -116,8 +118,8 @@ export function AdminUsersPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full sm:w-80">
+      <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full lg:w-80">
           <Search className="w-4 h-4 absolute left-3.5 top-3 text-gray-400" />
           <input
             type="text"
@@ -131,7 +133,21 @@ export function AdminUsersPage() {
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          {/* Type Filter (Human vs Bot vs All) */}
+          <select
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-[#131822] border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold text-indigo-300 focus:outline-none cursor-pointer"
+          >
+            <option value="all">🌐 All Accounts (Humans & Bots)</option>
+            <option value="human">👤 Real Users Only</option>
+            <option value="bot">🤖 AI Characters Only</option>
+          </select>
+
           <select
             value={statusFilter}
             onChange={(e) => {
@@ -169,6 +185,7 @@ export function AdminUsersPage() {
             <thead className="bg-white/5 border-b border-white/10 uppercase text-[10px] font-bold text-gray-400">
               <tr>
                 <th className="p-4">User</th>
+                <th className="p-4">Account Type</th>
                 <th className="p-4">Role</th>
                 <th className="p-4">Status</th>
                 <th className="p-4">Last Known IP</th>
@@ -179,15 +196,17 @@ export function AdminUsersPage() {
             <tbody className="divide-y divide-white/5">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-gray-500">Loading user directory...</td>
+                  <td colSpan="7" className="p-8 text-center text-gray-500">Loading user directory...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="p-8 text-center text-gray-500">No users found matching search criteria.</td>
+                  <td colSpan="7" className="p-8 text-center text-gray-500">No users found matching search criteria.</td>
                 </tr>
               ) : (
                 users.map((u) => {
+                  const isBot = Boolean(u.is_bot || u.is_ai || (u.email && u.email.includes('@ai.markanm.com')));
                   const isTargetAdmin = ['admin', 'superadmin'].includes((u.role || '').toLowerCase());
+
                   return (
                     <tr key={u.id} className="hover:bg-white/5 transition-colors">
                       <td className="p-4">
@@ -198,91 +217,94 @@ export function AdminUsersPage() {
                             className="w-9 h-9 rounded-xl object-cover border border-white/10 shrink-0"
                           />
                           <div>
-                            <span className="font-bold text-white block">{u.display_name}</span>
-                            <span className="text-[11px] text-gray-400">@{u.username} • {u.email}</span>
+                            <Link to={`/admin/users/${u.id}`} className="font-bold text-white hover:text-indigo-400 transition-colors">
+                              {u.display_name}
+                            </Link>
+                            <div className="text-[11px] text-gray-400 flex items-center gap-2">
+                              <span>@{u.username}</span>
+                              <span>•</span>
+                              <span>{u.email}</span>
+                            </div>
                           </div>
                         </div>
                       </td>
-
                       <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                          u.role === 'superadmin'
-                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                            : u.role === 'admin'
-                            ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                            : 'bg-white/5 text-gray-400 border-white/10'
-                        }`}>
+                        {isBot ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                            <Bot className="w-3 h-3" /> AI Bot
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            <UserCheck className="w-3 h-3" /> Human User
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4">
+                        <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded bg-white/5 border border-white/10 text-gray-300">
                           {u.role || 'user'}
                         </span>
                       </td>
-
                       <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                          u.account_status === 'active'
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                            : u.account_status === 'suspended'
-                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                            : 'bg-red-500/20 text-red-400 border-red-500/30'
-                        }`}>
-                          {u.account_status || 'active'}
-                        </span>
+                        {u.account_status === 'banned' ? (
+                          <span className="inline-flex items-center gap-1 text-red-400 font-bold uppercase text-[10px]">
+                            <XCircle className="w-3 h-3" /> Banned
+                          </span>
+                        ) : u.account_status === 'suspended' ? (
+                          <span className="inline-flex items-center gap-1 text-amber-400 font-bold uppercase text-[10px]">
+                            <Clock className="w-3 h-3" /> Suspended
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 font-bold uppercase text-[10px]">
+                            <CheckCircle className="w-3 h-3" /> Active
+                          </span>
+                        )}
                       </td>
-
-                      <td className="p-4 text-gray-400 font-mono text-[11px]">
-                        {u.last_ip || 'N/A'} {u.country_code ? `(${u.country_code})` : ''}
+                      <td className="p-4 font-mono text-[11px] text-gray-400">
+                        {u.last_ip || 'N/A'}
                       </td>
-
                       <td className="p-4 text-gray-400">
-                        {new Date(u.created_at).toLocaleDateString()}
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
                       </td>
-
                       <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Impersonate (Superadmin only & non-admin targets) */}
-                          {isSuperAdmin && !isTargetAdmin && u.account_status === 'active' && (
-                            <button
-                              onClick={() => {
-                                setSelectedUser(u);
-                                setActionType('impersonate');
-                              }}
-                              className="px-2.5 py-1 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-bold transition-colors"
-                              title="Impersonate User"
-                            >
-                              <Eye className="w-3.5 h-3.5 inline mr-1" />
-                              Impersonate
-                            </button>
-                          )}
-
-                          {/* Suspend / Ban / Restore */}
-                          {u.account_status === 'active' && !isTargetAdmin && (
+                        <div className="flex items-center justify-end gap-2">
+                          {u.account_status === 'active' ? (
                             <>
+                              <button
+                                onClick={() => {
+                                  setSelectedUser(u);
+                                  setActionType('impersonate');
+                                }}
+                                className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1"
+                              >
+                                <Eye className="w-3 h-3" /> Impersonate
+                              </button>
+
                               <button
                                 onClick={() => {
                                   setSelectedUser(u);
                                   setActionType('suspend');
                                 }}
-                                className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-lg text-xs font-semibold transition-colors"
+                                className="px-2.5 py-1 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 rounded-lg text-[11px] font-semibold transition-colors"
                               >
                                 Suspend
                               </button>
+
                               <button
                                 onClick={() => {
                                   setSelectedUser(u);
                                   setActionType('ban');
                                 }}
-                                className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold transition-colors"
+                                className="px-2.5 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/30 rounded-lg text-[11px] font-semibold transition-colors"
                               >
                                 Ban
                               </button>
                             </>
-                          )}
-
-                          {(u.account_status === 'suspended' || u.account_status === 'banned') && (
+                          ) : (
                             <button
                               onClick={() => handleRestore(u.id)}
-                              className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-semibold transition-colors"
+                              className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1"
                             >
-                              Restore
+                              <CheckCircle className="w-3 h-3" /> Restore Account
                             </button>
                           )}
                         </div>
@@ -296,115 +318,116 @@ export function AdminUsersPage() {
         </div>
 
         {/* Pagination Footer */}
-        <div className="p-4 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
-          <span>Showing page {pagination.page} of {pagination.total_pages} ({pagination.total} total users)</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="p-2 bg-white/5 border border-white/10 rounded-xl disabled:opacity-40"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
-              disabled={page >= pagination.total_pages}
-              className="p-2 bg-white/5 border border-white/10 rounded-xl disabled:opacity-40"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+        {pagination.total_pages > 1 && (
+          <div className="p-4 border-t border-white/10 flex items-center justify-between text-xs text-gray-400">
+            <span>Showing page {pagination.page} of {pagination.total_pages} ({pagination.total} total users)</span>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                className="p-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-40"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                disabled={page >= pagination.total_pages}
+                onClick={() => setPage(prev => prev + 1)}
+                className="p-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-40"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Action Modal (Suspend / Ban / Impersonate) */}
+      {/* Action Dialog Modal */}
       {selectedUser && actionType && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="bg-[#131822] border border-white/10 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-lg font-black text-white capitalize">
-              {actionType === 'impersonate' ? 'Step-Up Verification: Impersonate User' : `${actionType} User: ${selectedUser.display_name}`}
-            </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="max-w-md w-full bg-[#131822] border border-white/10 rounded-3xl p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center gap-3">
+              {actionType === 'impersonate' ? (
+                <div className="w-10 h-10 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center">
+                  <Lock className="w-5 h-5" />
+                </div>
+              ) : actionType === 'suspend' ? (
+                <div className="w-10 h-10 rounded-2xl bg-amber-600/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-2xl bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+              )}
+              <div>
+                <h3 className="font-bold text-sm text-white capitalize">{actionType} User</h3>
+                <p className="text-xs text-gray-400">{selectedUser.display_name} (@{selectedUser.username})</p>
+              </div>
+            </div>
 
             <form onSubmit={handleAction} className="space-y-4">
               {actionType === 'impersonate' && (
-                <>
-                  <div className="p-3 bg-amber-950/30 border border-amber-500/20 rounded-xl text-xs text-amber-300">
-                    🔒 Impersonating <strong>{selectedUser.display_name}</strong> (@{selectedUser.username}). Re-enter your admin password to confirm.
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-300 mb-1">Your Admin Password</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="Confirm your password"
-                      value={adminPassword}
-                      onChange={(e) => setAdminPassword(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                </>
-              )}
-
-              {actionType === 'suspend' && (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-300 mb-1">Suspension Reason</label>
-                    <textarea
-                      rows="2"
-                      required
-                      placeholder="Specify reason for suspension..."
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500 resize-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-300 mb-1">Suspend Until (Optional)</label>
-                    <input
-                      type="datetime-local"
-                      value={until}
-                      onChange={(e) => setUntil(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none"
-                    />
-                  </div>
-                </>
-              )}
-
-              {actionType === 'ban' && (
                 <div>
-                  <label className="block text-xs font-bold text-gray-300 mb-1">Ban Reason</label>
-                  <textarea
-                    rows="2"
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">Confirm Admin Password (Step-Up Security)</label>
+                  <input
+                    type="password"
                     required
-                    placeholder="Specify reason for permanent ban..."
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-red-500 resize-none"
+                    placeholder="Enter your current password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              {actionType === 'suspend' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1">Suspension Expiry Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={until}
+                    onChange={(e) => setUntil(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-1">Reason / Internal Note</label>
+                <textarea
+                  rows="3"
+                  required
+                  placeholder="Explain the reason for this administrative action (logged to audit trail)..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedUser(null);
                     setActionType(null);
                   }}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-semibold text-gray-300"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className={`px-5 py-2 rounded-xl text-xs font-bold shadow-lg ${
-                    actionType === 'ban' ? 'bg-red-600 hover:bg-red-500 text-white' : 'btn-gradient'
+                  className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-lg ${
+                    actionType === 'impersonate'
+                      ? 'bg-indigo-600 hover:bg-indigo-500'
+                      : actionType === 'suspend'
+                      ? 'bg-amber-600 hover:bg-amber-500'
+                      : 'bg-red-600 hover:bg-red-500'
                   }`}
                 >
-                  {submitting ? 'Processing...' : 'Confirm Action'}
+                  {submitting ? 'Processing...' : `Confirm ${actionType}`}
                 </button>
               </div>
             </form>
