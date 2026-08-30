@@ -16,14 +16,19 @@ export function ImpersonationBanner() {
   const handleEndImpersonation = async () => {
     setEnding(true);
     try {
-      await adminService.endImpersonation();
-      addToast('Impersonation session ended.', 'info');
-      // Clear token and reload to restore original session
-      localStorage.removeItem('auth_token');
-      sessionStorage.removeItem('auth_token');
-      window.location.href = '/login';
+      const res = await adminService.endImpersonation();
+      addToast('Impersonation session ended. Returning to admin panel.', 'info');
+      if (res.token) {
+        localStorage.setItem('markanm_token', res.token);
+        window.location.href = '/admin/users';
+      } else {
+        localStorage.removeItem('markanm_token');
+        window.location.href = '/login';
+      }
     } catch (err) {
       addToast(err.message || 'Failed to end impersonation', 'error');
+      localStorage.removeItem('markanm_token');
+      window.location.href = '/login';
     } finally {
       setEnding(false);
     }

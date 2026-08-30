@@ -367,6 +367,20 @@ class AdminController {
 
         if ($impersonatedBy > 0) {
             AdminMiddleware::logAudit($impersonatedBy, 'impersonate_end', (int)$user['id']);
+            $adminToken = bin2hex(random_bytes(32));
+            $expiresAt = date('Y-m-d H:i:s', time() + (30 * 86400));
+            $db->prepare('INSERT INTO sessions (user_id, token, expires_at) VALUES (:uid, :t, :exp)')->execute([
+                'uid' => $impersonatedBy,
+                't' => $adminToken,
+                'exp' => $expiresAt
+            ]);
+
+            jsonResponse([
+                'success' => true,
+                'token' => $adminToken,
+                'message' => 'Impersonation ended successfully.'
+            ]);
+            return;
         }
 
         jsonResponse([

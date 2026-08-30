@@ -71,8 +71,7 @@ export function AdminUsersPage() {
         });
         addToast(res.message, 'success');
         if (res.token) {
-          localStorage.setItem('auth_token', res.token);
-          sessionStorage.setItem('auth_token', res.token);
+          localStorage.setItem('markanm_token', res.token);
           window.location.href = '/chat';
           return;
         }
