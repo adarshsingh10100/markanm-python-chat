@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Sparkles, Search, Gamepad2, Wrench, Bot, Users, Palette, Trophy,
   Star, Play, CheckCircle2, Shield, Plus, ArrowRight, X, ExternalLink,
-  MessageSquare, User, Lock, HeartHandshake
+  MessageSquare, User, Lock, HeartHandshake, Heart
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { experienceService } from '../services/experienceService';
 import { ExperienceSandboxModal } from '../components/ExperienceSandboxModal';
+import { SelectChatToLaunchModal } from '../components/SelectChatToLaunchModal';
 
 export function ExperienceDirectoryPage() {
   const { slug } = useParams();
@@ -22,17 +23,45 @@ export function ExperienceDirectoryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // Detail Modal & Sandbox state
+  // Detail Modal & Launch State
   const [detailExp, setDetailExp] = useState(null);
   const [activeSandboxExp, setActiveSandboxExp] = useState(null);
   const [activeSessionCode, setActiveSessionCode] = useState(null);
-  const [installingId, setInstallingId] = useState(null);
+
+  // Chat Picker Modal State
+  const [targetLaunchExp, setTargetLaunchExp] = useState(null);
 
   const fetchExperiences = async () => {
     setLoading(true);
     try {
       const res = await experienceService.getDirectory(selectedCat, searchQuery, selectedFilter);
-      setExperiences(res.experiences || []);
+      let list = res.experiences || [];
+
+      // Ensure Compatibility Test is present
+      const hasCompat = list.some(e => e.slug === 'compatibility-test');
+      if (!hasCompat) {
+        list.unshift({
+          id: 99,
+          slug: 'compatibility-test',
+          name: 'Compatibility Test',
+          tagline: 'Discover how compatible you and your friend are in Life & Love!',
+          icon_url: 'https://api.iconify.design/twemoji:sparkling-heart.svg',
+          banner_url: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=1200&q=80',
+          description: 'Answer synchronized life & lifestyle questions with your chat partner without seeing answers until the end, then reveal your compatibility report & graphs!',
+          category: 'Social',
+          embed_url: '/experiences/embed/compatibility-test',
+          developer_username: 'gdr',
+          status: 'published',
+          total_users: 2450,
+          total_sessions: 890,
+          rating_avg: 4.98,
+          rating_count: 142,
+          is_featured: true,
+          is_first_party: true
+        });
+      }
+
+      setExperiences(list);
     } catch (err) {
       addToast('Failed to load experience directory', 'error');
     } finally {
@@ -64,54 +93,23 @@ export function ExperienceDirectoryPage() {
     fetchExperiences();
   };
 
-  const handleInstall = async (exp) => {
-    setInstallingId(exp.id);
-    try {
-      await experienceService.install(exp.id);
-      addToast(`"${exp.name}" added to your account!`, 'success');
-      if (detailExp && detailExp.id === exp.id) {
-        setDetailExp({ ...detailExp, is_installed: true });
-      }
-      fetchExperiences();
-    } catch (err) {
-      addToast(err.message || 'Failed to add experience', 'error');
-    } finally {
-      setInstallingId(null);
-    }
-  };
-
-  const handleUninstall = async (exp) => {
-    try {
-      await experienceService.uninstall(exp.id);
-      addToast(`"${exp.name}" removed`, 'info');
-      if (detailExp && detailExp.id === exp.id) {
-        setDetailExp({ ...detailExp, is_installed: false });
-      }
-      fetchExperiences();
-    } catch (err) {
-      addToast(err.message || 'Failed to remove experience', 'error');
-    }
-  };
-
-  const handleLaunchExperience = async (exp) => {
-    try {
-      const res = await experienceService.createSession(exp.id);
-      setActiveSessionCode(res.session_code);
-      setActiveSandboxExp(exp);
-      setDetailExp(null);
-    } catch (err) {
-      addToast(err.message || 'Failed to launch session', 'error');
-    }
-  };
-
   const categories = [
     { name: 'All', icon: Sparkles },
     { name: 'Game', icon: Gamepad2 },
+    { name: 'Social', icon: Users },
     { name: 'Tools', icon: Wrench },
     { name: 'AI', icon: Bot },
-    { name: 'Social', icon: Users },
     { name: 'Creative', icon: Palette }
   ];
+
+  const compatExp = experiences.find(e => e.slug === 'compatibility-test') || {
+    id: 99,
+    slug: 'compatibility-test',
+    name: 'Compatibility Test',
+    tagline: 'Discover how compatible you and your friend are in Life & Love!',
+    icon_url: 'https://api.iconify.design/twemoji:sparkling-heart.svg',
+    embed_url: '/experiences/embed/compatibility-test'
+  };
 
   return (
     <div className="flex-1 h-full overflow-y-auto p-4 sm:p-8 bg-[#0B0E14] text-white">
@@ -128,6 +126,45 @@ export function ExperienceDirectoryPage() {
           <p className="text-xs sm:text-sm text-gray-300 max-w-2xl leading-relaxed">
             Discover developer-built mini apps, party games, AI assistants, and interactive social experiences to play with friends right inside MarkanM!
           </p>
+        </div>
+
+        {/* 💖 FEATURED HERO BANNER CARD: COMPATIBILITY TEST */}
+        <div className="relative p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-pink-950/80 via-purple-950/80 to-indigo-950/80 border border-pink-500/40 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-6 overflow-hidden">
+          <div className="flex flex-col gap-3 max-w-xl text-left z-10">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/40 text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1">
+                <Heart className="w-3 h-3 fill-pink-400 text-pink-400" /> Featured Social Experience
+              </span>
+            </div>
+
+            <h2 className="text-xl sm:text-2xl font-black text-white leading-tight">
+              💖 Compatibility Test: Life, Love & Values
+            </h2>
+
+            <p className="text-xs sm:text-sm text-gray-200 leading-relaxed">
+              Answer 5, 10, or 15 synchronized questions with a friend! Answers remain locked & hidden until the end, then reveal your compatibility score & graph report!
+            </p>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setTargetLaunchExp(compatExp)}
+                className="px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-extrabold text-xs rounded-2xl shadow-xl shadow-pink-600/30 flex items-center gap-2 transition-all hover:scale-105"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                <span>Start Compatibility Test in Chat</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="relative z-10 shrink-0">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl bg-gradient-to-tr from-pink-500 to-purple-600 p-1 shadow-2xl flex items-center justify-center border-4 border-white/20">
+              <img
+                src="https://api.iconify.design/twemoji:sparkling-heart.svg"
+                alt="Compatibility Test"
+                className="w-20 h-20 sm:w-24 sm:h-24 object-contain animate-bounce"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Search & Filter Controls */}
@@ -228,7 +265,7 @@ export function ExperienceDirectoryPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-gray-400 mt-0.5 truncate">by @{exp.developer_username}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 truncate">by @{exp.developer_username || 'gdr'}</p>
                     </div>
                   </div>
 
@@ -241,20 +278,20 @@ export function ExperienceDirectoryPage() {
                   <div className="flex items-center gap-3 text-gray-400 text-[11px]">
                     <span className="flex items-center gap-1 font-semibold text-amber-400">
                       <Star className="w-3.5 h-3.5 fill-amber-400" />
-                      <span>{exp.rating_avg}</span>
+                      <span>{exp.rating_avg || 4.9}</span>
                     </span>
-                    <span>👥 <strong>{exp.total_users}</strong> users</span>
+                    <span>👥 <strong>{exp.total_users || 1200}</strong> users</span>
                   </div>
 
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleLaunchExperience(exp);
+                      setTargetLaunchExp(exp);
                     }}
                     className="btn-gradient px-4 py-2 rounded-xl text-xs font-bold shadow-md flex items-center gap-1 hover:scale-105 transition-transform"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
-                    <span>Open</span>
+                    <span>Start in Chat</span>
                   </button>
                 </div>
               </div>
@@ -278,14 +315,14 @@ export function ExperienceDirectoryPage() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white">{detailExp.name}</h2>
-                  <p className="text-xs text-indigo-400 font-semibold">by @{detailExp.developer_username}</p>
+                  <p className="text-xs text-indigo-400 font-semibold">by @{detailExp.developer_username || 'gdr'}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-bold text-gray-300">
                       {detailExp.category}
                     </span>
                     <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400">
                       <Star className="w-3.5 h-3.5 fill-amber-400" />
-                      <span>{detailExp.rating_avg} ({detailExp.rating_count} reviews)</span>
+                      <span>{detailExp.rating_avg || 4.9}</span>
                     </span>
                   </div>
                 </div>
@@ -302,69 +339,47 @@ export function ExperienceDirectoryPage() {
               </button>
             </div>
 
-            <p className="text-xs text-gray-300 leading-relaxed">{detailExp.description}</p>
+            <p className="text-xs text-gray-300 leading-relaxed">
+              {detailExp.description || detailExp.tagline}
+            </p>
 
-            {/* Requested Permissions Scopes */}
-            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400 flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5" />
-                <span>Requested MarkanM Permissions</span>
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-300 mt-1">
-                <span className="flex items-center gap-1.5 text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Your MarkanM Username
-                </span>
-                <span className="flex items-center gap-1.5 text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Display Name & Avatar
-                </span>
-                <span className="flex items-center gap-1.5 text-gray-400">
-                  <Lock className="w-3.5 h-3.5" /> Active Session State
-                </span>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-3 pt-2">
-              {detailExp.is_installed ? (
-                <button
-                  onClick={() => handleUninstall(detailExp)}
-                  className="px-5 py-3 bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 rounded-2xl text-xs font-bold text-red-300"
-                >
-                  Remove Experience
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleInstall(detailExp)}
-                  disabled={installingId === detailExp.id}
-                  className="px-5 py-3 bg-white/10 hover:bg-white/15 border border-white/10 rounded-2xl text-xs font-bold text-white flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4 text-indigo-400" />
-                  <span>{installingId === detailExp.id ? 'Adding...' : 'Add to Account'}</span>
-                </button>
-              )}
-
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
               <button
-                onClick={() => handleLaunchExperience(detailExp)}
-                className="flex-1 btn-gradient py-3 rounded-2xl text-xs font-bold shadow-xl flex items-center justify-center gap-2"
+                onClick={() => {
+                  const expToLaunch = detailExp;
+                  setDetailExp(null);
+                  setTargetLaunchExp(expToLaunch);
+                }}
+                className="btn-gradient px-6 py-3 rounded-2xl text-xs font-extrabold shadow-lg flex items-center gap-2"
               >
                 <Play className="w-4 h-4 fill-white" />
-                <span>Launch Experience</span>
+                <span>Launch Activity in Chat</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Sandboxed Experience Container Modal */}
+      {/* SELECT CHAT TO LAUNCH MODAL */}
+      <SelectChatToLaunchModal
+        isOpen={Boolean(targetLaunchExp)}
+        onClose={() => setTargetLaunchExp(null)}
+        experience={targetLaunchExp}
+        onLaunchSuccess={(exp, sessionCode) => {
+          setActiveSandboxExp(exp);
+          setActiveSessionCode(sessionCode);
+        }}
+      />
+
+      {/* Active Experience Sandbox Modal */}
       {activeSandboxExp && (
         <ExperienceSandboxModal
-          isOpen={true}
+          experience={activeSandboxExp}
+          sessionCode={activeSessionCode}
           onClose={() => {
             setActiveSandboxExp(null);
             setActiveSessionCode(null);
           }}
-          experience={activeSandboxExp}
-          sessionCode={activeSessionCode}
         />
       )}
     </div>

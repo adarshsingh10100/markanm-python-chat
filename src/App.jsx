@@ -35,7 +35,8 @@ import {
   WouldYouRatherEmbed,
   QuickQuizEmbed,
   PredictionPollEmbed,
-  PartyGameEmbed
+  PartyGameEmbed,
+  CompatibilityTestEmbed
 } from './pages/embeds/BuiltInEmbedPages';
 
 function ProtectedLayout() {
@@ -161,6 +162,7 @@ export default function App() {
           <Route path="/experiences/embed/quick-quiz" element={<QuickQuizEmbed />} />
           <Route path="/experiences/embed/prediction-poll" element={<PredictionPollEmbed />} />
           <Route path="/experiences/embed/party-game" element={<PartyGameEmbed />} />
+          <Route path="/experiences/embed/compatibility-test" element={<CompatibilityTestEmbed />} />
 
           {/* Protected Main Application Routes */}
           <Route path="/*" element={<ProtectedLayout />} />

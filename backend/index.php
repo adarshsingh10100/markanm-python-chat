@@ -92,7 +92,13 @@ try {
     }
 
     // 3. EXPERIENCE DIRECTORY & PLATFORM ROUTES
-    else if ($method === 'GET' && $path === '/experiences') {
+    else if ($method === 'GET' && $path === '/experiences/questions') {
+        ExperienceController::getQuestions();
+    } else if ($method === 'POST' && $path === '/experiences/custom-sets') {
+        ExperienceController::createCustomSet();
+    } else if ($method === 'GET' && $path === '/experiences/custom-sets') {
+        ExperienceController::getCustomSets();
+    } else if ($method === 'GET' && $path === '/experiences') {
         ExperienceController::listDirectory();
     } else if ($method === 'GET' && preg_match('#^/experiences/([a-zA-Z0-9_-]+)$#', $path, $matches)) {
         ExperienceController::getBySlug($matches[1]);
@@ -260,6 +266,8 @@ try {
         TrackingController::logEvent();
     } else if ($method === 'GET' && $path === '/tracking/stats') {
         TrackingController::getStats();
+    } else if ($method === 'GET' && $path === '/admin/activity-logs') {
+        TrackingController::getActivityLogs();
     }
 
     // 14. CONNECTION ROUTES
@@ -299,7 +307,9 @@ try {
     }
 
     // 16. MESSAGE ROUTES
-    else if ($method === 'GET' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/messages$#', $path, $matches)) {
+    else if ($method === 'GET' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/search-messages$#', $path, $matches)) {
+        MessageController::searchMessages($matches[1]);
+    } else if ($method === 'GET' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/messages$#', $path, $matches)) {
         MessageController::getMessages($matches[1]);
     } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/messages$#', $path, $matches)) {
         MessageController::sendMessage($matches[1]);
@@ -311,6 +321,8 @@ try {
         MessageController::toggleReaction((int)$matches[1]);
     } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/typing$#', $path, $matches)) {
         MessageController::updateTypingStatus($matches[1]);
+    } else if ($method === 'POST' && preg_match('#^/conversations/([a-zA-Z0-9_@]+)/import-messages$#', $path, $matches)) {
+        MessageController::importMessages($matches[1]);
     }
 
     // 17. NOTIFICATION ROUTES

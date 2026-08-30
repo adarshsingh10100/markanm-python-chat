@@ -122,6 +122,8 @@ class AuthController {
             // Track attribution log event
             $eventType = $refUserId ? 'signup_via_invite' : 'signup_direct';
             TrackingController::recordEvent($eventType, $userId, $refUserId, $inviteCode, $signupSourceLink);
+            // Log activity with IP geolocation
+            TrackingController::logActivity('register', $userId, ['source' => $signupSourceLink]);
 
             // Dispatch OTP verification code via PHPMailer
             Mailer::sendOTPEmail($email, $displayName, $otpCode);
@@ -251,20 +253,30 @@ class AuthController {
 
         $_SESSION['auth_token'] = $token;
 
-        // Log login event
+        // Log login event with IP geo
         TrackingController::recordEvent('login', (int)$user['id'], null, null, sanitizeInput($body['landing_url'] ?? '/login'));
+        TrackingController::logActivity('login', (int)$user['id']);
+
+        // Fetch updated geo info for response
+        $geoStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
+        $geoStmt->execute(['uid' => $user['id']]);
+        $geoRow = $geoStmt->fetch();
 
         jsonResponse([
             'success' => true,
             'token' => $token,
             'user' => [
-                'id' => (int)$user['id'],
+                'id'           => (int)$user['id'],
                 'display_name' => decodeOutput($user['display_name']),
-                'username' => $user['username'],
-                'email' => $user['email'],
-                'avatar_url' => $user['avatar_url'],
-                'bio' => decodeOutput($user['bio']),
-                'is_verified' => (bool)$user['is_verified']
+                'username'     => $user['username'],
+                'email'        => $user['email'],
+                'avatar_url'   => $user['avatar_url'],
+                'bio'          => decodeOutput($user['bio']),
+                'is_verified'  => (bool)$user['is_verified'],
+                'country_code' => $geoRow['country_code'] ?? null,
+                'country_name' => $geoRow['country_name'] ?? null,
+                'city'         => $geoRow['city'] ?? null,
+                'timezone'     => $geoRow['timezone'] ?? 'Asia/Kolkata',
             ]
         ]);
     }
@@ -285,8 +297,18 @@ class AuthController {
 
         if ($token) {
             $db = Database::getConnection();
+            // Get user_id before deleting session for activity logging
+            $sesStmt = $db->prepare('SELECT user_id FROM sessions WHERE token = :token LIMIT 1');
+            $sesStmt->execute(['token' => $token]);
+            $sesRow = $sesStmt->fetch();
+            $logoutUserId = $sesRow ? (int)$sesRow['user_id'] : null;
+
             $stmt = $db->prepare('DELETE FROM sessions WHERE token = :token');
             $stmt->execute(['token' => $token]);
+
+            if ($logoutUserId) {
+                TrackingController::logActivity('logout', $logoutUserId);
+            }
         }
 
         unset($_SESSION['auth_token']);
@@ -299,17 +321,30 @@ class AuthController {
     public static function me(): void {
         $user = AuthMiddleware::authenticate();
 
+        // Background: update last_seen_at and refresh geo if stale
+        TrackingController::logActivity('session_check', (int)$user['id']);
+
+        // Re-fetch geo so timezone is always fresh after logActivity may have updated it
+        $db = Database::getConnection();
+        $freshStmt = $db->prepare('SELECT country_code, country_name, city, timezone FROM users WHERE id = :uid LIMIT 1');
+        $freshStmt->execute(['uid' => $user['id']]);
+        $fresh = $freshStmt->fetch();
+
         jsonResponse([
             'success' => true,
             'user' => [
-                'id' => (int)$user['id'],
+                'id'           => (int)$user['id'],
                 'display_name' => decodeOutput($user['display_name']),
-                'username' => $user['username'],
-                'email' => $user['email'],
-                'avatar_url' => $user['avatar_url'],
-                'bio' => decodeOutput($user['bio']),
-                'is_verified' => (bool)$user['is_verified'],
-                'created_at' => $user['created_at']
+                'username'     => $user['username'],
+                'email'        => $user['email'],
+                'avatar_url'   => $user['avatar_url'],
+                'bio'          => decodeOutput($user['bio']),
+                'is_verified'  => (bool)$user['is_verified'],
+                'created_at'   => $user['created_at'],
+                'country_code' => $fresh['country_code'] ?? $user['country_code'] ?? null,
+                'country_name' => $fresh['country_name'] ?? $user['country_name'] ?? null,
+                'city'         => $fresh['city'] ?? $user['city'] ?? null,
+                'timezone'     => $fresh['timezone'] ?? $user['timezone'] ?? 'Asia/Kolkata',
             ]
         ]);
     }

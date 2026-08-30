@@ -34,13 +34,14 @@ export const experienceService = {
   },
 
   // Create live session
-  createSession: async (expId, conversationId = null, initialState = null) => {
+  createSession: async (expId, conversationId = null, initialState = null, slug = '') => {
     return await request('/v1/experiences/sessions', {
       method: 'POST',
       body: JSON.stringify({
         experience_id: expId,
         conversation_id: conversationId,
-        initial_state: initialState
+        initial_state: initialState,
+        slug: slug
       })
     });
   },

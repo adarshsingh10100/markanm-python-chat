@@ -64,11 +64,11 @@ export function ExperienceSandboxModal({ isOpen, onClose, experience, sessionCod
     embedUrl = window.location.origin + (experience.embed_url || `/experiences/embed/${experience.slug}`);
   }
   const delimiter = embedUrl.includes('?') ? '&' : '?';
-  const fullEmbedUrl = `${embedUrl}${delimiter}session_code=${sessionCode || ''}&user=${encodeURIComponent(user?.username || '')}`;
+  const fullEmbedUrl = `${embedUrl}${delimiter}session_code=${sessionCode || ''}&user=${encodeURIComponent(user?.username || '')}&user_id=${user?.id || ''}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-hidden">
-      <div className="w-full max-w-4xl h-[90vh] glass-panel rounded-3xl border border-white/15 shadow-2xl flex flex-col overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-hidden">
+      <div className="w-full max-w-4xl h-[100dvh] sm:h-[90vh] glass-panel sm:rounded-3xl border-0 sm:border border-white/15 shadow-2xl flex flex-col overflow-hidden relative">
         {/* Container Header Bar */}
         <div className="p-3.5 bg-[#0E121B] border-b border-white/10 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3 min-w-0">

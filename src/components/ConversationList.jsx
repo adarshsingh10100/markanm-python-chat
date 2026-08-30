@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { Search, Plus, Users, MessageSquare, Check, CheckCheck } from 'lucide-react';
 import { useChat } from '../context/ChatContext';
+import { useAuth } from '../context/AuthContext';
 import { Avatar } from './Avatar';
+import { countryFlag } from '../utils/textUtils';
 
 export function ConversationList({ onOpenCreateGroup }) {
   const { conversations, activeConversationId, selectConversation, loadingConversations } = useChat();
+  const { userTimezone, userCountryCode } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTab, setFilterTab] = useState('all'); // all, direct, group, unread
 
@@ -24,7 +27,7 @@ export function ConversationList({ onOpenCreateGroup }) {
     const now = new Date();
 
     if (date.toDateString() === now.toDateString()) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString('en-US', { timeZone: userTimezone || 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
     }
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
@@ -34,7 +37,17 @@ export function ConversationList({ onOpenCreateGroup }) {
       {/* Search Header */}
       <div className="p-4 border-b border-white/10 flex flex-col gap-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-white tracking-wide">Chats</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-white tracking-wide">Chats</h2>
+            {userCountryCode && (
+              <span
+                className="text-sm leading-none"
+                title={`Your location: ${userCountryCode}`}
+              >
+                {countryFlag(userCountryCode)}
+              </span>
+            )}
+          </div>
           <button
             onClick={onOpenCreateGroup}
             className="p-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition-all flex items-center gap-1.5 text-xs font-semibold"

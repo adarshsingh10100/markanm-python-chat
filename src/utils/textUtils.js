@@ -44,3 +44,90 @@ export function formatMessagePreview(lastMsg, fallbackDesc = '') {
 
   return decodeHTML(content);
 }
+
+/**
+ * Safely parse server timestamps (MySQL "YYYY-MM-DD HH:MM:SS" or ISO strings) into valid Date object in UTC
+ */
+export function parseServerDate(dateStr) {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return dateStr;
+
+  let s = String(dateStr).trim();
+  // If MySQL format "YYYY-MM-DD HH:MM:SS", convert to "YYYY-MM-DDTHH:MM:SSZ" (UTC)
+  if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}/.test(s)) {
+    s = s.replace(' ', 'T');
+    // Check if the time part lacks timezone indicators like Z, +05:30, or -04:00
+    if (!s.endsWith('Z') && !s.slice(10).includes('+') && !s.slice(10).includes('-')) {
+      s += 'Z';
+    }
+  }
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Format timestamp in user's detected timezone (from IP geo).
+ * Falls back to 'Asia/Kolkata' (IST) if not provided.
+ *
+ * @param {string|Date} dateStr  — ISO date string or Date object
+ * @param {string} [timezone]   — IANA timezone e.g. 'Asia/Kolkata', 'America/New_York'
+ */
+export function formatTime(dateStr, timezone = 'Asia/Kolkata') {
+  const date = parseServerDate(dateStr);
+  if (!date) return '';
+  const tz = timezone || 'Asia/Kolkata';
+  return date.toLocaleTimeString('en-US', {
+    timeZone: tz,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+/**
+ * Format full date in user's timezone (e.g. "Today", "Aug 29", "Jan 5, 2025")
+ *
+ * @param {string|Date} dateStr
+ * @param {string} [timezone]
+ */
+export function formatDate(dateStr, timezone = 'Asia/Kolkata') {
+  const date = parseServerDate(dateStr);
+  if (!date) return '';
+  const tz = timezone || 'Asia/Kolkata';
+
+  // Check if it's today in user's timezone
+  const nowStr = new Date().toLocaleDateString('en-US', { timeZone: tz });
+  const dateLocalStr = date.toLocaleDateString('en-US', { timeZone: tz });
+
+  if (nowStr === dateLocalStr) {
+    return formatTime(date, tz);
+  }
+
+  return date.toLocaleDateString('en-US', {
+    timeZone: tz,
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+/**
+ * Get a flag emoji for a country code (e.g. 'IN' → '🇮🇳')
+ * Uses Unicode regional indicator symbol letters
+ *
+ * @param {string} countryCode — 2-letter ISO country code
+ */
+export function countryFlag(countryCode) {
+  if (!countryCode || countryCode.length !== 2) return '';
+  const code = countryCode.toUpperCase();
+  return String.fromCodePoint(
+    ...[...code].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)
+  );
+}
+
+/**
+ * @deprecated Use formatTime(dateStr, timezone) instead
+ */
+export function formatTimeIST(dateStr) {
+  return formatTime(dateStr, 'Asia/Kolkata');
+}

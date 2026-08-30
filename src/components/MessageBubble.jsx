@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Reply, MoreVertical, Edit2, Trash2, Smile, CheckCheck } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { useAuth } from '../context/AuthContext';
 
 const QUICK_EMOJIS = ['👍', '❤️', '🔥', '😂', '😮', '🎉'];
 
@@ -13,10 +14,11 @@ export function MessageBubble({
 }) {
   const [showMenu, setShowMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const { userTimezone } = useAuth();
 
   const formatTime = (dateStr) => {
     if (!dateStr) return '';
-    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(dateStr).toLocaleTimeString('en-US', { timeZone: userTimezone || 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   const isMine = message.is_mine;

@@ -44,11 +44,17 @@ export const chatService = {
     return await request(`/conversations/${convId}/leave`, { method: 'POST' });
   },
 
-  async getMessages(convId, sinceId = 0, beforeId = 0) {
-    let url = `/conversations/${convId}/messages?`;
+  async getMessages(convId, sinceId = 0, beforeId = 0, limit = 150, isTop = false, dateStr = '') {
+    let url = `/conversations/${convId}/messages?limit=${limit}&`;
+    if (isTop) url += `top=1&`;
+    if (dateStr) url += `date=${encodeURIComponent(dateStr)}&`;
     if (sinceId > 0) url += `since_id=${sinceId}&`;
     if (beforeId > 0) url += `before_id=${beforeId}&`;
     return await request(url, { method: 'GET' });
+  },
+
+  async searchMessages(convId, query) {
+    return await request(`/conversations/${convId}/search-messages?q=${encodeURIComponent(query)}`, { method: 'GET' });
   },
 
   async sendMessage(convId, content, replyToId = null, messageType = 'text', metadata = null) {
@@ -91,5 +97,12 @@ export const chatService = {
 
   async updateTypingStatus(convId, isTyping) {
     return await request(`/conversations/${convId}/typing`, { method: 'POST', body: { is_typing: isTyping } });
+  },
+
+  async importWhatsAppMessages(convId, messages) {
+    return await request(`/conversations/${convId}/import-messages`, {
+      method: 'POST',
+      body: { messages }
+    });
   }
 };

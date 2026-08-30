@@ -58,8 +58,18 @@ export function AuthProvider({ children }) {
     setUser(prev => prev ? { ...prev, ...updatedFields } : prev);
   };
 
+  // Derived geo/timezone values — automatically updated when user object changes
+  // These come from IP-based geolocation on the backend (ip-api.com)
+  const userTimezone = user?.timezone || 'Asia/Kolkata';
+  const userCountryCode = user?.country_code || null;
+  const userCountryName = user?.country_name || null;
+  const userCity = user?.city || null;
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, checkAuth, updateUserProfile }}>
+    <AuthContext.Provider value={{
+      user, loading, login, register, logout, checkAuth, updateUserProfile,
+      userTimezone, userCountryCode, userCountryName, userCity
+    }}>
       {children}
     </AuthContext.Provider>
   );

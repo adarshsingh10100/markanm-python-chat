@@ -52,7 +52,9 @@ class MessageController {
 
         $sinceId = isset($_GET['since_id']) ? (int)$_GET['since_id'] : 0;
         $beforeId = isset($_GET['before_id']) ? (int)$_GET['before_id'] : 0;
-        $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 50) : 30;
+        $isTop = isset($_GET['top']) && $_GET['top'] == '1';
+        $targetDate = isset($_GET['date']) ? trim($_GET['date']) : '';
+        $limit = isset($_GET['limit']) ? min((int)$_GET['limit'], 300) : 150;
 
         $params = ['cid' => $convId];
         $sql = '
@@ -67,7 +69,12 @@ class MessageController {
             WHERE m.conversation_id = :cid
         ';
 
-        if ($sinceId > 0) {
+        if ($isTop) {
+            $sql .= ' ORDER BY m.id ASC LIMIT ' . $limit;
+        } else if (!empty($targetDate)) {
+            $sql .= ' AND DATE(m.created_at) >= :target_date ORDER BY m.id ASC LIMIT ' . $limit;
+            $params['target_date'] = $targetDate;
+        } else if ($sinceId > 0) {
             $sql .= ' AND m.id > :since_id ORDER BY m.id ASC';
             $params['since_id'] = $sinceId;
         } else if ($beforeId > 0) {
@@ -81,7 +88,7 @@ class MessageController {
         $stmt->execute($params);
         $rawMessages = $stmt->fetchAll();
 
-        if ($sinceId == 0) {
+        if ($sinceId == 0 && !$isTop && empty($targetDate)) {
             $rawMessages = array_reverse($rawMessages);
         }
 
@@ -253,6 +260,15 @@ class MessageController {
             // Do not block message response if email delivery is delayed
         }
 
+        // Log user activity (non-blocking, fire-and-forget)
+        try {
+            TrackingController::logActivity('send_message', (int)$currentUser['id'], [
+                'conversation_id' => $convId,
+                'message_type'    => $msgType,
+                'content_length'  => mb_strlen($content),
+            ]);
+        } catch (Throwable $e) {}
+
         jsonResponse([
             'success' => true,
             'message' => [
@@ -380,5 +396,196 @@ class MessageController {
         $stmt->execute(['uid' => $currentUser['id'], 'cid' => $targetConv]);
 
         jsonResponse(['success' => true]);
+    }
+
+    /**
+     * POST /api/conversations/{id}/import-messages
+     * Bulk import messages (e.g. from WhatsApp export)
+     */
+    public static function importMessages(string $identifier): void {
+        $convId = self::resolveConvId($identifier);
+        $currentUser = AuthMiddleware::authenticate();
+        $db = Database::getConnection();
+
+        // Verify membership
+        $memStmt = $db->prepare('SELECT role FROM conversation_members WHERE conversation_id = :cid AND user_id = :uid LIMIT 1');
+        $memStmt->execute(['cid' => $convId, 'uid' => $currentUser['id']]);
+        if (!$memStmt->fetch()) {
+            jsonError('Access denied.', 403);
+        }
+
+        $body = getRequestBody();
+        $messages = $body['messages'] ?? [];
+
+        if (empty($messages) || !is_array($messages)) {
+            jsonError('No messages provided.', 422);
+        }
+
+        // Limit to 20000 messages per import to support long chat histories
+        if (count($messages) > 20000) {
+            jsonError('Too many messages. Maximum 20000 per import.', 422);
+        }
+
+        // Verify all sender_ids are members of this conversation
+        $memberStmt = $db->prepare('SELECT user_id FROM conversation_members WHERE conversation_id = :cid');
+        $memberStmt->execute(['cid' => $convId]);
+        $memberIds = array_column($memberStmt->fetchAll(), 'user_id');
+
+        $importedCount = 0;
+        $lastMsgId = null;
+        $lastMsgTime = null;
+
+        $db->beginTransaction();
+        try {
+            $dupCheckStmt = $db->prepare('
+                SELECT id FROM messages 
+                WHERE conversation_id = :cid 
+                  AND sender_id = :sid 
+                  AND content = :content 
+                  AND created_at = :cat 
+                LIMIT 1
+            ');
+
+            $insertStmt = $db->prepare('
+                INSERT INTO messages (conversation_id, sender_id, message_type, content, created_at)
+                VALUES (:cid, :sid, :mtype, :content, :cat)
+            ');
+
+            $skippedCount = 0;
+
+            foreach ($messages as $msg) {
+                $senderId = (int)($msg['sender_id'] ?? 0);
+                $content  = sanitizeInput($msg['content'] ?? '');
+                $msgType  = sanitizeInput($msg['message_type'] ?? 'text');
+                $rawDate  = $msg['created_at'] ?? date('Y-m-d H:i:s');
+
+                // Validate sender is a member of the conversation
+                if (!in_array((string)$senderId, $memberIds) && !in_array($senderId, $memberIds)) {
+                    continue; // Skip messages from unknown senders
+                }
+
+                if (empty($content)) continue;
+
+                // Validate message_type
+                $validTypes = ['text', 'image', 'video', 'audio', 'file', 'system', 'gif', 'sticker'];
+                if (!in_array($msgType, $validTypes)) {
+                    $msgType = 'text';
+                }
+
+                // Safely normalize date
+                try {
+                    $dt = new DateTime($rawDate);
+                    $createdAt = $dt->format('Y-m-d H:i:s');
+                } catch (Throwable $e) {
+                    $createdAt = date('Y-m-d H:i:s');
+                }
+
+                // Skip duplicate messages already imported (same conv, sender, content, timestamp)
+                $dupCheckStmt->execute([
+                    'cid'     => $convId,
+                    'sid'     => $senderId,
+                    'content' => $content,
+                    'cat'     => $createdAt
+                ]);
+                if ($dupCheckStmt->fetch()) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                try {
+                    $insertStmt->execute([
+                        'cid'     => $convId,
+                        'sid'     => $senderId,
+                        'mtype'   => $msgType,
+                        'content' => $content,
+                        'cat'     => $createdAt
+                    ]);
+
+                    $lastMsgId = (int)$db->lastInsertId();
+                    $lastMsgTime = $createdAt;
+                    $importedCount++;
+                } catch (Throwable $lineErr) {
+                    // Skip single line if SQL fails (e.g. emoji truncation)
+                    continue;
+                }
+            }
+
+            // Update conversation's last message pointer ONLY if imported message is newer than existing conversation timestamp
+            if ($lastMsgId) {
+                $db->prepare('
+                    UPDATE conversations 
+                    SET last_message_id = :mid, last_message_at = :mat 
+                    WHERE id = :cid AND (last_message_at IS NULL OR :mat2 >= last_message_at)
+                ')->execute(['mid' => $lastMsgId, 'mat' => $lastMsgTime, 'mat2' => $lastMsgTime, 'cid' => $convId]);
+
+                // Update sender's read marker
+                $db->prepare('UPDATE conversation_members SET last_read_message_id = :mid WHERE conversation_id = :cid AND user_id = :uid AND (last_read_message_id IS NULL OR :mid2 > last_read_message_id)')
+                   ->execute(['mid' => $lastMsgId, 'cid' => $convId, 'uid' => $currentUser['id'], 'mid2' => $lastMsgId]);
+            }
+
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            jsonError('Import failed: ' . $e->getMessage(), 500);
+        }
+
+        // Log activity
+        try {
+            TrackingController::logActivity('import_whatsapp', (int)$currentUser['id'], [
+                'conversation_id' => $convId,
+                'imported_count'  => $importedCount,
+                'skipped_count'   => $skippedCount,
+            ]);
+        } catch (Throwable $e) {}
+
+        jsonResponse([
+            'success'        => true,
+            'imported_count' => $importedCount,
+            'skipped_count'  => $skippedCount,
+        ]);
+    }
+
+    /**
+     * GET /api/conversations/{id}/search-messages?q=keyword
+     */
+    public static function searchMessages(string $identifier): void {
+        $convId = self::resolveConvId($identifier);
+        $currentUser = AuthMiddleware::authenticate();
+        $query = isset($_GET['q']) ? trim($_GET['q']) : '';
+
+        if (empty($query)) {
+            jsonResponse(['success' => true, 'results' => []]);
+        }
+
+        $db = Database::getConnection();
+        $memStmt = $db->prepare('SELECT id FROM conversation_members WHERE conversation_id = :cid AND user_id = :uid LIMIT 1');
+        $memStmt->execute(['cid' => $convId, 'uid' => $currentUser['id']]);
+        if (!$memStmt->fetch()) {
+            jsonError('Access denied.', 403);
+        }
+
+        $stmt = $db->prepare('
+            SELECT m.id, m.conversation_id, m.sender_id, m.message_type, m.content, m.created_at,
+                   u.display_name AS sender_name, u.avatar_url AS sender_avatar
+            FROM messages m
+            JOIN users u ON m.sender_id = u.id
+            WHERE m.conversation_id = :cid AND m.is_deleted = 0 AND m.content LIKE :q
+            ORDER BY m.id DESC
+            LIMIT 50
+        ');
+        $stmt->execute(['cid' => $convId, 'q' => '%' . $query . '%']);
+        $rows = $stmt->fetchAll();
+
+        $results = array_map(function($m) {
+            return [
+                'id' => (int)$m['id'],
+                'sender_name' => decodeOutput($m['sender_name']),
+                'sender_avatar' => $m['sender_avatar'],
+                'content' => decodeOutput($m['content']),
+                'created_at' => $m['created_at']
+            ];
+        }, $rows);
+
+        jsonResponse(['success' => true, 'results' => $results]);
     }
 }

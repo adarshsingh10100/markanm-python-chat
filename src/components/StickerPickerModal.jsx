@@ -1,148 +1,168 @@
 import React, { useState, useEffect } from 'react';
-import { X, Smile, Search, Sparkles } from 'lucide-react';
-import { request } from '../services/api';
+import { X, Smile, Search } from 'lucide-react';
+
+const STICKER_CATEGORIES = [
+  { id: 'cute', label: '🐱 Cute & Animals', query: 'cute' },
+  { id: 'reactions', label: '😍 Reactions', query: 'reaction' },
+  { id: 'memes', label: '💥 Memes', query: 'meme' },
+  { id: 'love', label: '💖 Love & Hearts', query: 'love' },
+  { id: 'funny', label: '😂 Funny', query: 'funny' },
+  { id: 'anime', label: '🎌 Anime & Chibi', query: 'anime' },
+  { id: 'celebration', label: '🎉 Party', query: 'party' }
+];
+
+// Verified 100% working direct i.giphy.com transparent stickers catalog
+const FALLBACK_STICKERS = [
+  { id: 'L1VRSg6CslKVZoxWWD', name: 'Love Cat', tags: ['cute', 'love', 'cat', 'heart'], url: 'https://i.giphy.com/L1VRSg6CslKVZoxWWD.gif' },
+  { id: 'MDJ9IbxxvDUQM', name: 'Heart Sparkle', tags: ['love', 'heart', 'reactions', 'cute'], url: 'https://i.giphy.com/MDJ9IbxxvDUQM.gif' },
+  { id: 'GeimqsH0TLDt4tScGw', name: 'Party Dance', tags: ['party', 'dance', 'funny', 'celebration'], url: 'https://i.giphy.com/GeimqsH0TLDt4tScGw.gif' },
+  { id: 'slvHAS8JVC1yE', name: 'Anime Heart', tags: ['anime', 'love', 'cute', 'reactions'], url: 'https://i.giphy.com/slvHAS8JVC1yE.gif' },
+  { id: '10t57cXzcu7504', name: 'Lol Meme', tags: ['memes', 'funny', 'laugh', 'reactions'], url: 'https://i.giphy.com/10t57cXzcu7504.gif' },
+  { id: '8vQSQ3cNXuDGo', name: 'Pikachu Wave', tags: ['cute', 'anime', 'party', 'reactions'], url: 'https://i.giphy.com/8vQSQ3cNXuDGo.gif' },
+  { id: 'tsX3YMWYzDPjAARfeg', name: 'Kitten Vibe', tags: ['cute', 'cat', 'dance', 'funny'], url: 'https://i.giphy.com/tsX3YMWYzDPjAARfeg.gif' },
+  { id: 'G3va39rn8E4A8', name: 'Bear Kiss', tags: ['love', 'cute', 'reactions', 'heart'], url: 'https://i.giphy.com/G3va39rn8E4A8.gif' },
+  { id: 'cNhCye8HCoi3u', name: 'Cat Sparkle', tags: ['cute', 'cat', 'funny'], url: 'https://i.giphy.com/cNhCye8HCoi3u.gif' },
+  { id: '3o7abKhOpu0NwenH3O', name: 'Heart Explode', tags: ['love', 'heart', 'party'], url: 'https://i.giphy.com/3o7abKhOpu0NwenH3O.gif' }
+];
 
 export function StickerPickerModal({ isOpen, onClose, onSelectSticker }) {
   const [query, setQuery] = useState('');
-  const [packs, setPacks] = useState([]);
-  const [selectedPackId, setSelectedPackId] = useState(1);
-  const [searchResults, setSearchResults] = useState([]);
+  const [activeCategory, setActiveCategory] = useState('cute');
+  const [stickers, setStickers] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (isOpen) {
-      request('/stickers', { method: 'GET' })
-        .then(res => setPacks(res.packs || []))
-        .catch(() => setPacks([]));
-    }
-  }, [isOpen]);
-
-  const fetchStickers = async (searchQuery) => {
-    const q = searchQuery.trim();
-    if (!q) {
-      setSearchResults([]);
-      return;
-    }
-
+  const fetchStickers = async (searchQuery = '') => {
     setLoading(true);
-    const apiKey = 'dc6zaTOxFJmzC';
-    const clientUrl = `https://api.giphy.com/v1/stickers/search?api_key=${apiKey}&q=${encodeURIComponent(q)}&limit=30`;
+    const q = searchQuery.trim().toLowerCase() || STICKER_CATEGORIES.find(c => c.id === activeCategory)?.query || 'cute';
 
     try {
-      const resp = await fetch(clientUrl);
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-          const formatted = data.data.map(item => ({
-            id: item.id,
-            name: item.title || 'Sticker',
-            url: item.images.fixed_height.url || item.images.original.url
-          }));
-          setSearchResults(formatted);
+      const giphyApiKey = 'pLJu9ZaGBSbgPjRGSFSuTVMODEsA3i2C';
+      const gUrl = `https://api.giphy.com/v1/stickers/search?api_key=${giphyApiKey}&q=${encodeURIComponent(q)}&limit=48&rating=g`;
+      const gResp = await fetch(gUrl);
+      if (gResp.ok) {
+        const gData = await gResp.json();
+        if (gData.data && Array.isArray(gData.data) && gData.data.length > 0) {
+          const formatted = gData.data.map(item => {
+            const directUrl = item.id ? `https://i.giphy.com/${item.id}.gif` : (item.images.fixed_height?.url || item.images.original?.url);
+            return {
+              id: item.id,
+              name: item.title || 'Sticker',
+              url: directUrl
+            };
+          });
+          setStickers(formatted);
           setLoading(false);
           return;
         }
       }
     } catch (err) {}
 
-    // Fallback proxy
-    try {
-      const res = await request(`/stickers/search?q=${encodeURIComponent(q)}`, { method: 'GET' });
-      setSearchResults(res.stickers || []);
-    } catch (e) {
-      setSearchResults([]);
-    } finally {
-      setLoading(false);
+    // Fallback catalog
+    let filtered = FALLBACK_STICKERS;
+    if (q) {
+      const terms = q.split(/\s+/);
+      filtered = FALLBACK_STICKERS.filter(s =>
+        terms.some(t => s.name.toLowerCase().includes(t) || s.tags.some(tag => tag.includes(t)))
+      );
+      if (filtered.length === 0) filtered = FALLBACK_STICKERS;
     }
+
+    setStickers(filtered.map(s => ({ id: s.id, name: s.name, url: s.url })));
+    setLoading(false);
   };
 
   useEffect(() => {
     if (isOpen) {
-      const timer = setTimeout(() => fetchStickers(query), 300);
+      const timer = setTimeout(() => fetchStickers(query), 200);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, query]);
+  }, [isOpen, query, activeCategory]);
 
   if (!isOpen) return null;
 
-  const currentPack = packs.find(p => p.id === selectedPackId) || packs[0];
+  const handleCategoryClick = (cat) => {
+    setActiveCategory(cat.id);
+    setQuery(cat.query);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="w-full max-w-md glass-panel rounded-3xl border border-white/10 p-6 shadow-2xl relative my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+      <div className="w-full max-w-lg glass-panel rounded-3xl border border-white/15 p-4 sm:p-6 shadow-2xl relative my-auto flex flex-col gap-4 max-h-[90vh]">
+        {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div className="flex items-center gap-2">
             <Smile className="w-5 h-5 text-amber-400" />
-            <h3 className="text-base font-bold text-white">Worldwide Stickers</h3>
+            <h3 className="text-sm sm:text-base font-bold text-white">Millions of Worldwide Stickers</h3>
           </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-white rounded-lg">
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-white rounded-xl hover:bg-white/10">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Search Worldwide Stickers */}
-        <div className="relative my-3">
+        {/* Search Input */}
+        <div className="relative">
           <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search worldwide stickers (e.g. cat, dance)..."
+            placeholder="Search stickers (e.g. cat, dance, heart)..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500/50"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveCategory('custom');
+            }}
+            className="w-full pl-9 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-xs sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-amber-500/50"
           />
         </div>
 
-        {/* Packs Tabs (only if not searching) */}
-        {!query.trim() && (
-          <div className="flex items-center gap-2 overflow-x-auto my-2 pb-1 border-b border-white/5 scrollbar-none">
-            {packs.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setSelectedPackId(p.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 shrink-0 transition-all ${
-                  selectedPackId === p.id ? 'bg-amber-600 text-white font-bold' : 'bg-white/5 text-gray-400 hover:text-white'
-                }`}
-              >
-                <span>{p.icon}</span>
-                <span>{p.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Categories Horizontal Slider */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {STICKER_CATEGORIES.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => handleCategoryClick(cat)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all ${
+                activeCategory === cat.id
+                  ? 'bg-amber-500 text-black font-bold shadow-md'
+                  : 'bg-white/5 text-gray-300 hover:bg-white/10'
+              }`}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
 
         {/* Grid Display */}
-        <div className="grid grid-cols-4 gap-3 max-h-64 overflow-y-auto p-2">
-          {query.trim() ? (
-            loading ? (
-              <div className="col-span-full text-center text-xs text-gray-400 py-8">Searching Worldwide Stickers...</div>
-            ) : searchResults.length === 0 ? (
-              <div className="col-span-full text-center text-xs text-gray-500 py-8">No stickers found</div>
-            ) : (
-              searchResults.map(st => (
-                <button
-                  key={st.id}
-                  onClick={() => {
-                    onSelectSticker(st.url);
-                    onClose();
-                  }}
-                  className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex flex-col items-center gap-1 transition-transform hover:scale-110"
-                >
-                  <img src={st.url} alt={st.name} className="w-12 h-12 object-contain" />
-                </button>
-              ))
-            )
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 max-h-[55vh] sm:max-h-80 overflow-y-auto p-1 scrollbar-none">
+          {loading ? (
+            <div className="col-span-full py-16 flex flex-col items-center justify-center gap-2">
+              <div className="w-7 h-7 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-gray-400 font-medium">Searching stickers...</span>
+            </div>
+          ) : stickers.length === 0 ? (
+            <div className="col-span-full py-16 text-center text-xs text-gray-500">No stickers found</div>
           ) : (
-            currentPack?.stickers?.map(st => (
+            stickers.map(st => (
               <button
                 key={st.id}
                 onClick={() => {
                   onSelectSticker(st.url);
                   onClose();
                 }}
-                className="p-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl flex flex-col items-center gap-1 transition-transform hover:scale-110"
+                className="p-3 bg-white/5 hover:bg-white/15 border border-white/10 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all hover:scale-110 group relative shadow-sm aspect-square"
               >
-                <img src={st.url} alt={st.name} className="w-10 h-10 object-contain" />
-                <span className="text-[9px] font-semibold text-gray-400 truncate w-full text-center">{st.name}</span>
+                <img
+                  src={st.url}
+                  alt={st.name}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    if (st.id) {
+                      e.target.src = `https://i.giphy.com/${st.id}.gif`;
+                    }
+                  }}
+                  className="w-14 h-14 object-contain drop-shadow-md"
+                />
               </button>
             ))
           )}

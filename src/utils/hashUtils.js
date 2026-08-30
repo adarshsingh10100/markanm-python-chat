@@ -52,5 +52,6 @@ export function decodeId(hashStr) {
   }
 
   const origId = (val ^ MASK) / MULTIPLIER;
-  return Math.round(origId);
+  const rounded = Math.round(origId);
+  return rounded > 0 ? rounded : 0;
 }

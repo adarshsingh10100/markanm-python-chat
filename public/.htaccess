@@ -1,5 +1,13 @@
 # MarkanM Chat Apache Rewrite Rules for Hostinger Shared Hosting
 
+# Ensure correct MIME types for JS/CSS assets
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType text/css .css
+  AddType image/svg+xml .svg
+  AddType application/json .json
+</IfModule>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
@@ -13,7 +21,7 @@
   RewriteRule ^api/(.*)$ backend/index.php [QSA,L]
   RewriteRule ^backend/api/(.*)$ backend/index.php [QSA,L]
 
-  # 2. Serve static files directly if existing
+  # 2. Serve static files directly if existing (assets, images, etc.)
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]

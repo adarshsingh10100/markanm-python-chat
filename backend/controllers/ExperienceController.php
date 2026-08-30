@@ -308,6 +308,40 @@ class ExperienceController {
         }
 
         $db = Database::getConnection();
+        $slug = sanitizeInput($body['slug'] ?? '');
+
+        // Verify or resolve experience_id safely to prevent Foreign Key violations
+        $expCheck = $db->prepare('SELECT id FROM experiences WHERE id = :eid OR (slug = :slug AND :slug != "") LIMIT 1');
+        $expCheck->execute(['eid' => $expId, 'slug' => $slug]);
+        $foundExp = $expCheck->fetch();
+
+        if ($foundExp) {
+            $expId = (int)$foundExp['id'];
+        } else {
+            // Auto-register missing first-party experience entry with explicit NULL app_id
+            $targetSlug = !empty($slug) ? $slug : 'compatibility-test';
+            try {
+                $insExp = $db->prepare('
+                    INSERT INTO experiences (app_id, slug, name, tagline, icon_url, category, embed_url, developer_id, status, is_featured, is_first_party)
+                    VALUES (NULL, :slug, :name, :tag, :icon, "Social", :embed, :did, "published", 1, 1)
+                ');
+                $insExp->execute([
+                    'slug' => $targetSlug,
+                    'name' => str_replace('-', ' ', ucfirst($targetSlug)),
+                    'tag' => 'Interactive experience for MarkanM Chat',
+                    'icon' => 'https://api.iconify.design/twemoji:sparkling-heart.svg',
+                    'embed' => '/experiences/embed/' . $targetSlug,
+                    'did' => $currentUser['id']
+                ]);
+                $expId = (int)$db->lastInsertId();
+            } catch (Throwable $e) {
+                // Fallback: If DB table strictly requires existing app_id or fails, use first available experience ID
+                $fb = $db->query('SELECT id FROM experiences LIMIT 1')->fetch();
+                if ($fb) {
+                    $expId = (int)$fb['id'];
+                }
+            }
+        }
 
         $sessionCode = 'SES_' . strtoupper(bin2hex(random_bytes(4)));
         $expiresAt = date('Y-m-d H:i:s', time() + 86400); // 24 hour session
@@ -315,6 +349,30 @@ class ExperienceController {
         $db->beginTransaction();
 
         try {
+            // 1. Enforce ONE game at a time: expire ALL active/waiting sessions tied to this conversation
+            if ($convId) {
+                // Expire sessions that have conversation_id set
+                $db->prepare('UPDATE experience_sessions SET status = "expired" WHERE conversation_id = :cid AND status IN ("active","waiting")')
+                   ->execute(['cid' => $convId]);
+                // Also expire sessions sent via message bubbles in this conversation (may have NULL conversation_id)
+                // by looking up message-embedded session codes in this conversation
+                try {
+                    $msgSessions = $db->prepare(
+                        "SELECT DISTINCT SUBSTRING(content, LOCATE('Session #', content) + 9, 12) AS scode
+                         FROM messages
+                         WHERE conversation_id = :cid AND content LIKE '%Session #SES_%'"
+                    );
+                    $msgSessions->execute(['cid' => $convId]);
+                    while ($row = $msgSessions->fetch()) {
+                        $scode = trim($row['scode'] ?? '');
+                        if (strlen($scode) >= 8) {
+                            $db->prepare('UPDATE experience_sessions SET status = "expired" WHERE session_code LIKE :scode AND status IN ("active","waiting")')
+                               ->execute(['scode' => $scode . '%']);
+                        }
+                    }
+                } catch (Throwable $e) {}
+            }
+
             $stmt = $db->prepare('
                 INSERT INTO experience_sessions (session_code, experience_id, conversation_id, creator_id, state_json, status, expires_at)
                 VALUES (:code, :eid, :cid, :crid, :state, "active", :exp)
@@ -368,20 +426,59 @@ class ExperienceController {
         $stmt->execute(['code' => $code, 'id' => is_numeric($code) ? (int)$code : 0]);
         $session = $stmt->fetch();
 
-        if (!$session) {
-            jsonError('Session not found.', 404);
-        }
+        $stateData = $session['state_json'] ? json_decode($session['state_json'], true) : [];
 
-        // Fetch session members
-        $memStmt = $db->prepare('
-            SELECT sm.score, sm.joined_at, u.id AS user_id, u.display_name, u.username, u.avatar_url
-            FROM experience_session_members sm
-            JOIN users u ON sm.user_id = u.id
-            WHERE sm.session_id = :sid
-            ORDER BY sm.score DESC, sm.joined_at ASC
-        ');
-        $memStmt->execute(['sid' => $session['id']]);
-        $members = $memStmt->fetchAll();
+        // Ensure questions are deterministically seeded for this session if not already present
+        if (empty($stateData['questions']) || !is_array($stateData['questions'])) {
+            $gameSlug = $session['experience_slug'] ?? 'compatibility-test';
+            $testMode = $stateData['test_mode'] ?? 'friends';
+            $totalQ = (int)($stateData['total_questions'] ?? 10);
+
+            // Fetch available questions from game_questions table filtered by test_mode (Love vs Friends)
+            $catFilter = ($testMode === 'partner') ? "category IN ('Love', 'Romantic')" : "category IN ('Personality', 'Communication', 'Lifestyle', 'Habits')";
+            $qStmt = $db->prepare("SELECT id, game_slug, category, question_type, question_text, options_json FROM game_questions WHERE game_slug = :slug AND {$catFilter} ORDER BY id ASC");
+            $qStmt->execute(['slug' => $gameSlug]);
+            $allQs = $qStmt->fetchAll();
+
+            // Fallback if category specific fetch returned empty
+            if (empty($allQs)) {
+                $qStmtFallback = $db->prepare('SELECT id, game_slug, category, question_type, question_text, options_json FROM game_questions WHERE game_slug = :slug ORDER BY id ASC');
+                $qStmtFallback->execute(['slug' => $gameSlug]);
+                $allQs = $qStmtFallback->fetchAll();
+            }
+
+            if (!empty($allQs)) {
+                // Seed PRNG with session_code CRC32 hash so ALL players receive identical question ordering
+                mt_srand(crc32($session['session_code']));
+                $countQs = count($allQs);
+                $indices = range(0, $countQs - 1);
+                for ($i = $countQs - 1; $i > 0; $i--) {
+                    $j = mt_rand(0, $i);
+                    $tmp = $indices[$i];
+                    $indices[$i] = $indices[$j];
+                    $indices[$j] = $tmp;
+                }
+
+                $selectedQs = [];
+                for ($k = 0; $k < min($totalQ, $countQs); $k++) {
+                    $q = $allQs[$indices[$k]];
+                    $selectedQs[] = [
+                        'id' => (int)$q['id'],
+                        'question_text' => decodeOutput($q['question_text']),
+                        'options' => json_decode($q['options_json'], true) ?: []
+                    ];
+                }
+
+                $stateData['questions'] = $selectedQs;
+                $stateData['total_questions'] = count($selectedQs);
+                $stateData['status'] = $stateData['status'] ?? 'in_progress';
+                $stateData['answers'] = $stateData['answers'] ?? [];
+
+                // Persist seeded questions back into experience_sessions
+                $upd = $db->prepare('UPDATE experience_sessions SET state_json = :sj WHERE id = :sid');
+                $upd->execute(['sj' => json_encode($stateData), 'sid' => $session['id']]);
+            }
+        }
 
         jsonResponse([
             'success' => true,
@@ -394,7 +491,9 @@ class ExperienceController {
                 'icon_url' => $session['icon_url'],
                 'creator_name' => decodeOutput($session['creator_name']),
                 'creator_username' => $session['creator_username'],
-                'state' => $session['state_json'] ? json_decode($session['state_json'], true) : null,
+                'creator_id' => (int)$session['creator_id'],
+                'state_json' => json_encode($stateData),
+                'state' => $stateData,
                 'status' => $session['status'],
                 'members' => array_map(function($m) {
                     return [
@@ -433,21 +532,14 @@ class ExperienceController {
 
     /**
      * POST /api/v1/experiences/sessions/{code}/state
-     * Sync updated session JSON state via SDK
+     * Sync updated session JSON state via SDK with turn synchronization
      */
     public static function updateSessionState(string $code): void {
         $currentUser = AuthMiddleware::authenticate();
         $body = getRequestBody();
-        $state = !empty($body['state']) ? json_encode($body['state']) : null;
-        $userScore = isset($body['score']) ? (int)$body['score'] : null;
-
-        if (!$state) {
-            jsonError('state payload is required.', 422);
-        }
 
         $db = Database::getConnection();
-
-        $stmt = $db->prepare('SELECT id FROM experience_sessions WHERE session_code = :code LIMIT 1');
+        $stmt = $db->prepare('SELECT * FROM experience_sessions WHERE session_code = :code LIMIT 1');
         $stmt->execute(['code' => $code]);
         $session = $stmt->fetch();
 
@@ -455,16 +547,105 @@ class ExperienceController {
             jsonError('Session not found.', 404);
         }
 
-        $upd = $db->prepare('UPDATE experience_sessions SET state_json = :state WHERE id = :sid');
-        $upd->execute(['state' => $state, 'sid' => $session['id']]);
+        $existingState = $session['state_json'] ? json_decode($session['state_json'], true) : [];
+        $newState = !empty($body['state']) ? $body['state'] : [];
 
-        if ($userScore !== null) {
-            $updScore = $db->prepare('UPDATE experience_session_members SET score = :score WHERE session_id = :sid AND user_id = :uid');
-            $updScore->execute(['score' => $userScore, 'sid' => $session['id'], 'uid' => $currentUser['id']]);
+        // Record player answer for synchronized / asynchronous progression
+        if (isset($newState['answer'])) {
+            $qIdx    = (int)($newState['answer']['q_index'] ?? 0);
+            $choice  = $newState['answer']['choice'] ?? null;
+            $userId  = (string)$currentUser['id'];
+            $totalQ  = (int)($existingState['total_questions'] ?? (count($existingState['questions'] ?? []) ?: 10));
+
+            if (!isset($existingState['answers'])) $existingState['answers'] = [];
+            if (!isset($existingState['answers'][$userId])) $existingState['answers'][$userId] = [];
+            $existingState['answers'][$userId][(string)$qIdx] = $choice;
+
+            // Dual Player Slots: P1 (Creator) and P2 (Partner)
+            $isP1 = ((int)$session['creator_id'] === (int)$currentUser['id']);
+            $pSlot = $isP1 ? 'p1_answers' : 'p2_answers';
+            if (!isset($existingState[$pSlot])) $existingState[$pSlot] = [];
+            $existingState[$pSlot][(string)$qIdx] = $choice;
+
+            $p1Count = count($existingState['p1_answers'] ?? []);
+            $p2Count = count($existingState['p2_answers'] ?? []);
+            $allPlayersCount = count($existingState['answers']);
+
+            // ---- Mutual completion check ----
+            $bothFinished = ($p1Count >= $totalQ && $p2Count >= $totalQ) || ($allPlayersCount >= 2 && min(array_map('count', $existingState['answers'])) >= $totalQ);
+
+            if ($bothFinished) {
+                $existingState['status'] = 'completed';
+                // Mark DB row as ended
+                $db->prepare('UPDATE experience_sessions SET status = "ended" WHERE id = :sid')
+                   ->execute(['sid' => $session['id']]);
+            }
+
+            // ---- Chat notifications ----
+            $convId = $session['conversation_id'];
+            if ($convId) {
+                if (!isset($existingState['notified_completions'])) {
+                    $existingState['notified_completions'] = [];
+                }
+
+                // 1. Current user just finished all questions
+                $myAnsCount = count($existingState['answers'][$userId] ?? []);
+                if ($myAnsCount >= $totalQ && empty($existingState['notified_completions'][$userId])) {
+                    $existingState['notified_completions'][$userId] = true;
+                    $userName = decodeOutput($currentUser['display_name']);
+                    $msgText  = "🔒 {$userName} has completed the Compatibility Test! Waiting for the other person to finish. Session #{$code}";
+                    try {
+                        $ins = $db->prepare('INSERT INTO messages (conversation_id, sender_id, message_type, content) VALUES (:cid, :sid, "text", :content)');
+                        $ins->execute(['cid' => $convId, 'sid' => $currentUser['id'], 'content' => $msgText]);
+                        $mid = (int)$db->lastInsertId();
+                        $db->prepare('UPDATE conversations SET last_message_id=:mid, last_message_at=NOW() WHERE id=:cid')
+                           ->execute(['mid' => $mid, 'cid' => $convId]);
+                    } catch (Throwable $e) {}
+                }
+
+                // 2. Both players done — unlock results & post score in chat!
+                if ($bothFinished && empty($existingState['notified_all_completed'])) {
+                    $existingState['notified_all_completed'] = true;
+
+                    // Calculate compatibility score
+                    $p1Ans = $existingState['p1_answers'] ?? reset($existingState['answers']) ?: [];
+                    $p2Ans = $existingState['p2_answers'] ?? end($existingState['answers']) ?: [];
+                    $matchesCount = 0;
+                    for ($i = 0; $i < $totalQ; $i++) {
+                        $k = (string)$i;
+                        if (isset($p1Ans[$k]) && isset($p2Ans[$k]) && trim((string)$p1Ans[$k]) === trim((string)$p2Ans[$k])) {
+                            $matchesCount++;
+                        }
+                    }
+                    $pct = (int)round(($matchesCount / max(1, $totalQ)) * 100);
+                    $badge = ($pct >= 80) ? "💖 Perfect Soulmates!" : (($pct >= 50) ? "✨ Great Synergy!" : "⚡ Opposites Attract!");
+
+                    $msgText = "🎉 Compatibility Test Results: {$pct}% ({$badge})! Matched on {$matchesCount}/{$totalQ} questions. Open activity to reveal full breakdown! Session #{$code}";
+                    try {
+                        $ins = $db->prepare('INSERT INTO messages (conversation_id, sender_id, message_type, content) VALUES (:cid, :sid, "text", :content)');
+                        $ins->execute(['cid' => $convId, 'sid' => $currentUser['id'], 'content' => $msgText]);
+                        $mid = (int)$db->lastInsertId();
+                        $db->prepare('UPDATE conversations SET last_message_id=:mid, last_message_at=NOW() WHERE id=:cid')
+                           ->execute(['mid' => $mid, 'cid' => $convId]);
+                    } catch (Throwable $e) {}
+                }
+            }
         }
 
-        jsonResponse(['success' => true, 'message' => 'Session state updated successfully!']);
+        // Merge any outer state properties (skip 'answer' key)
+        foreach ($newState as $k => $v) {
+            if ($k !== 'answer') {
+                $existingState[$k] = $v;
+            }
+        }
+
+        $stateJson = json_encode($existingState);
+        $db->prepare('UPDATE experience_sessions SET state_json = :state WHERE id = :sid')
+           ->execute(['state' => $stateJson, 'sid' => $session['id']]);
+
+        jsonResponse(['success' => true, 'state' => $existingState]);
     }
+
 
     /**
      * POST /api/experiences/{id}/reviews
@@ -518,4 +699,234 @@ class ExperienceController {
 
         jsonResponse(['success' => true, 'message' => "Experience status updated to {$status}."]);
     }
+
+    /**
+     * GET /api/experiences/questions
+     * Returns unasked questions filtered by category and/or custom set
+     */
+    public static function getQuestions(): void {
+        $db = Database::getConnection();
+        $slug = sanitizeInput($_GET['game_slug'] ?? 'quick-quiz');
+        $category = sanitizeInput($_GET['category'] ?? '');
+        $excludeRaw = $_GET['exclude'] ?? '';
+        $type = sanitizeInput($_GET['type'] ?? '');
+        $setId = (int)($_GET['set_id'] ?? 0);
+
+        // If custom set_id requested, fetch from custom_set_questions table!
+        if ($setId > 0) {
+            $stmt = $db->prepare('SELECT * FROM custom_set_questions WHERE set_id = :sid ORDER BY RAND() LIMIT 20');
+            $stmt->execute(['sid' => $setId]);
+            $customQs = $stmt->fetchAll();
+
+            if (!empty($customQs)) {
+                jsonResponse([
+                    'success' => true,
+                    'questions' => array_map(function($q) {
+                        return [
+                            'id' => (int)$q['id'],
+                            'game_slug' => 'custom',
+                            'category' => 'Custom Pack',
+                            'question_type' => $q['question_type'],
+                            'question_text' => decodeOutput($q['question_text']),
+                            'options' => $q['options_json'] ? json_decode($q['options_json'], true) : null,
+                            'correct_index' => (int)$q['correct_index']
+                        ];
+                    }, $customQs)
+                ]);
+                return;
+            }
+        }
+
+        $excludeIds = [];
+        if (!empty($excludeRaw)) {
+            $parts = explode(',', $excludeRaw);
+            foreach ($parts as $p) {
+                $val = (int)trim($p);
+                if ($val > 0) $excludeIds[] = $val;
+            }
+        }
+
+        $sql = 'SELECT * FROM game_questions WHERE game_slug = :slug';
+        $params = ['slug' => $slug];
+
+        if (!empty($category) && $category !== 'All') {
+            $sql .= ' AND category = :cat';
+            $params['cat'] = $category;
+        }
+
+        if (!empty($type)) {
+            $sql .= ' AND question_type = :type';
+            $params['type'] = $type;
+        }
+
+        if (!empty($excludeIds)) {
+            $inClause = implode(',', $excludeIds);
+            $sql .= " AND id NOT IN ({$inClause})";
+        }
+
+        $sql .= ' ORDER BY RAND() LIMIT 10';
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $questions = $stmt->fetchAll();
+
+        // Fallback: If all questions in DB for category have been answered in this session, reset exclusion filter
+        if (empty($questions)) {
+            $fallbackSql = 'SELECT * FROM game_questions WHERE game_slug = :slug';
+            $fallbackParams = ['slug' => $slug];
+            if (!empty($category) && $category !== 'All') {
+                $fallbackSql .= ' AND category = :cat';
+                $fallbackParams['cat'] = $category;
+            }
+            if (!empty($type)) {
+                $fallbackSql .= ' AND question_type = :type';
+                $fallbackParams['type'] = $type;
+            }
+            $fallbackSql .= ' ORDER BY RAND() LIMIT 10';
+            $stmt = $db->prepare($fallbackSql);
+            $stmt->execute($fallbackParams);
+            $questions = $stmt->fetchAll();
+        }
+
+        jsonResponse([
+            'success' => true,
+            'questions' => array_map(function($q) {
+                return [
+                    'id' => (int)$q['id'],
+                    'game_slug' => $q['game_slug'],
+                    'category' => $q['category'],
+                    'question_type' => $q['question_type'],
+                    'question_text' => decodeOutput($q['question_text']),
+                    'options' => $q['options_json'] ? json_decode($q['options_json'], true) : null,
+                    'correct_index' => (int)$q['correct_index'],
+                    'difficulty' => $q['difficulty']
+                ];
+            }, $questions)
+        ]);
+    }
+
+    /**
+     * POST /api/experiences/custom-sets
+     * Create custom Question Set / Truth & Dare Pack
+     */
+    public static function createCustomSet(): void {
+        $currentUser = AuthMiddleware::authenticate();
+        $body = getRequestBody();
+
+        $title = sanitizeInput($body['title'] ?? '');
+        $category = sanitizeInput($body['category'] ?? 'Party');
+        $gameSlug = sanitizeInput($body['game_slug'] ?? 'party-game');
+        $description = sanitizeInput($body['description'] ?? '');
+        $isPublic = isset($body['is_public']) ? ((bool)$body['is_public'] ? 1 : 0) : 1;
+        $questions = $body['questions'] ?? [];
+
+        if (empty($title) || empty($questions) || !is_array($questions)) {
+            jsonError('Title and questions array are required.', 422);
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('
+            INSERT INTO custom_question_sets (user_id, title, category, game_slug, description, is_public)
+            VALUES (:uid, :title, :cat, :slug, :desc, :pub)
+        ');
+        $stmt->execute([
+            'uid' => $currentUser['id'],
+            'title' => $title,
+            'cat' => $category,
+            'slug' => $gameSlug,
+            'desc' => $description,
+            'pub' => $isPublic
+        ]);
+        $setId = (int)$db->lastInsertId();
+
+        $qStmt = $db->prepare('
+            INSERT INTO custom_set_questions (set_id, question_type, question_text, options_json, correct_index)
+            VALUES (:sid, :qtype, :qtext, :opts, :cidx)
+        ');
+
+        foreach ($questions as $q) {
+            $text = sanitizeInput($q['question_text'] ?? '');
+            if (empty($text)) continue;
+            $type = sanitizeInput($q['question_type'] ?? 'truth');
+            $opts = !empty($q['options']) ? json_encode($q['options']) : null;
+            $cidx = (int)($q['correct_index'] ?? 0);
+
+            $qStmt->execute([
+                'sid' => $setId,
+                'qtype' => $type,
+                'qtext' => $text,
+                'opts' => $opts,
+                'cidx' => $cidx
+            ]);
+        }
+
+        jsonResponse([
+            'success' => true,
+            'message' => 'Custom Question Set created successfully!',
+            'set_id' => $setId
+        ], 201);
+    }
+
+    /**
+     * GET /api/experiences/custom-sets
+     * Fetch user & public community question sets
+     */
+    public static function getCustomSets(): void {
+        $db = Database::getConnection();
+        $gameSlug = sanitizeInput($_GET['game_slug'] ?? 'party-game');
+        $category = sanitizeInput($_GET['category'] ?? '');
+
+        $sql = '
+            SELECT s.*, u.display_name AS creator_name, u.username AS creator_username,
+                   (SELECT COUNT(*) FROM custom_set_questions WHERE set_id = s.id) AS question_count
+            FROM custom_question_sets s
+            JOIN users u ON s.user_id = u.id
+            WHERE (s.is_public = 1
+        ';
+        $params = [];
+
+        try {
+            $currentUser = AuthMiddleware::authenticate();
+            $sql .= ' OR s.user_id = :uid';
+            $params['uid'] = $currentUser['id'];
+        } catch (Throwable $e) {}
+
+        $sql .= ')';
+
+        if (!empty($gameSlug)) {
+            $sql .= ' AND s.game_slug = :slug';
+            $params['slug'] = $gameSlug;
+        }
+
+        if (!empty($category) && $category !== 'All') {
+            $sql .= ' AND s.category = :cat';
+            $params['cat'] = $category;
+        }
+
+        $sql .= ' ORDER BY s.created_at DESC LIMIT 30';
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $sets = $stmt->fetchAll();
+
+        jsonResponse([
+            'success' => true,
+            'sets' => array_map(function($s) {
+                return [
+                    'id' => (int)$s['id'],
+                    'title' => decodeOutput($s['title']),
+                    'category' => $s['category'],
+                    'game_slug' => $s['game_slug'],
+                    'description' => decodeOutput($s['description']),
+                    'is_public' => (bool)$s['is_public'],
+                    'creator_name' => decodeOutput($s['creator_name']),
+                    'creator_username' => $s['creator_username'],
+                    'question_count' => (int)$s['question_count'],
+                    'total_plays' => (int)$s['total_plays']
+                ];
+            }, $sets)
+        ]);
+    }
 }
+
+
