@@ -116,6 +116,6 @@ export const chatService = {
   },
 
   async getLinkPreview(url) {
-    return await request(`/api/link-preview?url=${encodeURIComponent(url)}`, { method: 'GET' });
+    return await request(`/link-preview?url=${encodeURIComponent(url)}`, { method: 'GET' });
   }
 };

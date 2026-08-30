@@ -30,9 +30,33 @@ export function MessageBubble({
   }
   const linkPreview = metadata?.link_preview;
 
-  // Extract YouTube ID if present in content or link preview
-  const youtubeMatch = message.content ? message.content.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i) : null;
+  // 1. Robust YouTube ID Extraction
+  const youtubeRegex = /(?:youtube\.com\/(?:watch\?.*v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i;
+  const youtubeMatch = message.content ? message.content.match(youtubeRegex) : null;
   const youtubeId = linkPreview?.youtube_id || (youtubeMatch ? youtubeMatch[1] : null);
+
+  // 2. Generic URL Fallback Detection
+  const urlRegex = /(https?:\/\/[^\s]+)/i;
+  const urlMatch = message.content ? message.content.match(urlRegex) : null;
+  const detectedUrl = linkPreview?.url || (urlMatch ? urlMatch[0] : null);
+
+  // Determine card data to display
+  let displayCard = linkPreview;
+  if (!displayCard && detectedUrl) {
+    try {
+      const parsedHost = new URL(detectedUrl).hostname;
+      displayCard = {
+        url: detectedUrl,
+        title: parsedHost,
+        site_name: parsedHost,
+        favicon: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsedHost)}&sz=64`,
+        description: null,
+        image: null
+      };
+    } catch (e) {
+      displayCard = null;
+    }
+  }
 
   return (
     <div className={`flex items-end gap-2 group relative my-1.5 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -83,18 +107,18 @@ export function MessageBubble({
           )}
 
           {/* WhatsApp-Style Web Link Preview Card (Non-YouTube) */}
-          {linkPreview && !youtubeId && !message.is_deleted && (
+          {displayCard && !youtubeId && !message.is_deleted && (
             <a
-              href={linkPreview.url}
+              href={displayCard.url}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-2.5 block rounded-2xl overflow-hidden bg-black/40 border border-white/15 hover:border-indigo-400/50 transition-all shadow-lg text-left group/card"
             >
-              {linkPreview.image && (
+              {displayCard.image && (
                 <div className="aspect-video w-full overflow-hidden bg-black/60 relative">
                   <img
-                    src={linkPreview.image}
-                    alt={linkPreview.title || 'Link Preview'}
+                    src={displayCard.image}
+                    alt={displayCard.title || 'Link Preview'}
                     className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300"
                     onError={(e) => { e.target.style.display = 'none'; }}
                   />
@@ -102,26 +126,25 @@ export function MessageBubble({
               )}
               <div className="p-3 space-y-1">
                 <div className="flex items-center gap-2">
-                  {linkPreview.favicon && (
-                    <img
-                      src={linkPreview.favicon}
-                      alt=""
-                      className="w-3.5 h-3.5 object-contain shrink-0"
-                      onError={(e) => { e.target.style.display = 'none'; }}
-                    />
-                  )}
+                  <img
+                    src={displayCard.favicon || `https://www.google.com/s2/favicons?domain=${encodeURIComponent(displayCard.site_name || displayCard.url)}&sz=64`}
+                    alt=""
+                    className="w-3.5 h-3.5 object-contain shrink-0"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
                   <span className="text-[10px] font-mono font-semibold text-gray-400 truncate">
-                    {linkPreview.site_name || linkPreview.url}
+                    {displayCard.site_name || displayCard.url}
                   </span>
+                  <ExternalLink className="w-3 h-3 text-gray-400 ml-auto shrink-0" />
                 </div>
-                {linkPreview.title && (
+                {displayCard.title && (
                   <h4 className="font-bold text-xs text-white line-clamp-1 group-hover/card:text-indigo-300 transition-colors">
-                    {linkPreview.title}
+                    {displayCard.title}
                   </h4>
                 )}
-                {linkPreview.description && (
+                {displayCard.description && (
                   <p className="text-[11px] text-gray-300 line-clamp-2 leading-snug">
-                    {linkPreview.description}
+                    {displayCard.description}
                   </p>
                 )}
               </div>
