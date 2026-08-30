@@ -13,6 +13,8 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { HomePage } from './pages/HomePage';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
+import { TermsOfServicePage } from './pages/TermsOfServicePage';
 import { ProfileCompletionModal } from './components/ProfileCompletionModal';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChatPage } from './pages/ChatPage';
@@ -159,11 +161,13 @@ export default function App() {
           {/* Landing/Home Page — public */}
           <Route path="/" element={<HomePage />} />
 
-          {/* Public Auth Routes */}
+          {/* Public Auth & Legal Routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms-of-service" element={<TermsOfServicePage />} />
           <Route path="/join/:code" element={<JoinInvitePage />} />
 
           {/* Update 4 OAuth Authorization Consent Page */}

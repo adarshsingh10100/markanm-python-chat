@@ -217,25 +217,44 @@ class AuthController {
 
         if (empty($identifier) || empty($password)) {
             jsonError('Username/email and password are required.', 422);
+        }        $db = Database::getConnection();
+
+        // Query guaranteed core columns first
+        $user = null;
+        try {
+            $stmt = $db->prepare('
+                SELECT id, display_name, username, email, password_hash
+                FROM users
+                WHERE username = :id_user OR email = :id_email
+                LIMIT 1
+            ');
+            $stmt->execute(['id_user' => strtolower($identifier), 'id_email' => strtolower($identifier)]);
+            $user = $stmt->fetch();
+        } catch (Throwable $e) {
+            jsonError('Database query error: ' . $e->getMessage(), 500);
         }
 
-        $db = Database::getConnection();
-        $stmt = $db->prepare('
-            SELECT id, display_name, username, email, password_hash, avatar_url, bio, is_verified
-            FROM users
-            WHERE username = :id_user OR email = :id_email
-            LIMIT 1
-        ');
-        $stmt->execute(['id_user' => strtolower($identifier), 'id_email' => strtolower($identifier)]);
-        $user = $stmt->fetch();
-
-        if (!$user || !password_verify($password, $user['password_hash'])) {
+        if (!$user || empty($user['password_hash']) || !password_verify($password, $user['password_hash'])) {
             jsonError('Invalid credentials.', 401);
         }
 
+        // Fetch optional profile fields safely
+        $optFields = ['avatar_url' => null, 'bio' => '', 'is_verified' => 1];
+        try {
+            $optStmt = $db->prepare('SELECT avatar_url, bio, is_verified FROM users WHERE id = :uid LIMIT 1');
+            $optStmt->execute(['uid' => $user['id']]);
+            $res = $optStmt->fetch();
+            if ($res) {
+                $optFields['avatar_url']  = $res['avatar_url'] ?? null;
+                $optFields['bio']         = $res['bio'] ?? '';
+                $optFields['is_verified'] = isset($res['is_verified']) ? (bool)$res['is_verified'] : true;
+            }
+        } catch (Throwable $e) {}
+
         try {
             $token = bin2hex(random_bytes(32));
-            $expiresAt = date('Y-m-d H:i:s', strtotime('+' . TOKEN_EXPIRY_DAYS . ' days'));
+            $expiryDays = defined('TOKEN_EXPIRY_DAYS') ? TOKEN_EXPIRY_DAYS : 30;
+            $expiresAt = date('Y-m-d H:i:s', strtotime('+' . $expiryDays . ' days'));
             $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
             $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
 
@@ -273,9 +292,9 @@ class AuthController {
                     'display_name' => decodeOutput($user['display_name']),
                     'username'     => $user['username'],
                     'email'        => $user['email'],
-                    'avatar_url'   => $user['avatar_url'],
-                    'bio'          => decodeOutput($user['bio']),
-                    'is_verified'  => (bool)$user['is_verified'],
+                    'avatar_url'   => $optFields['avatar_url'],
+                    'bio'          => decodeOutput($optFields['bio']),
+                    'is_verified'  => (bool)$optFields['is_verified'],
                     'country_code' => $geoRow['country_code'] ?? null,
                     'country_name' => $geoRow['country_name'] ?? null,
                     'city'         => $geoRow['city'] ?? null,
@@ -283,7 +302,7 @@ class AuthController {
                 ]
             ]);
         } catch (Throwable $e) {
-            jsonError('Login failed: ' . $e->getMessage(), 500);
+            jsonError('Login session error: ' . $e->getMessage(), 500);
         }
     }
 
@@ -366,35 +385,54 @@ class AuthController {
      * POST /api/auth/forgot-password
      */
     public static function forgotPassword(): void {
-        $body = getRequestBody();
-        $email = strtolower(trim($body['email'] ?? ''));
+        try {
+            $body = getRequestBody();
+            $email = strtolower(trim($body['email'] ?? ''));
 
-        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            jsonError('A valid email address is required.', 422);
-        }
+            if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                jsonError('A valid email address is required.', 422);
+            }
 
-        $db = Database::getConnection();
-        $stmt = $db->prepare('SELECT id, display_name, email FROM users WHERE email = :email LIMIT 1');
-        $stmt->execute(['email' => $email]);
-        $user = $stmt->fetch();
+            $db = Database::getConnection();
+            $stmt = $db->prepare('SELECT id, display_name, email FROM users WHERE email = :email LIMIT 1');
+            $stmt->execute(['email' => $email]);
+            $user = $stmt->fetch();
 
-        // Always return success to prevent email enumeration attacks
-        if (!$user) {
+            // Always return success message to prevent email enumeration
+            if (!$user) {
+                jsonResponse(['success' => true, 'message' => 'If an account exists with this email, a password reset link has been sent.']);
+            }
+
+            // Generate secure reset token
+            $resetToken = bin2hex(random_bytes(32));
+            $resetExpires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+            try {
+                $upd = $db->prepare('UPDATE users SET reset_token = :token, reset_expires = :expires WHERE id = :id');
+                $upd->execute(['token' => $resetToken, 'expires' => $resetExpires, 'id' => $user['id']]);
+            } catch (Throwable $e) {
+                // Auto-migrate missing columns
+                try {
+                    $db->exec('ALTER TABLE users ADD COLUMN reset_token VARCHAR(100) DEFAULT NULL, ADD COLUMN reset_expires DATETIME DEFAULT NULL');
+                    $upd = $db->prepare('UPDATE users SET reset_token = :token, reset_expires = :expires WHERE id = :id');
+                    $upd->execute(['token' => $resetToken, 'expires' => $resetExpires, 'id' => $user['id']]);
+                } catch (Throwable $e2) {
+                    error_log('Failed to alter table for reset token: ' . $e2->getMessage());
+                }
+            }
+
+            $resetLink = (getenv('APP_URL') ?: 'https://chat.markanm.com') . '/reset-password?token=' . $resetToken;
+
+            try {
+                Mailer::sendPasswordResetEmail($user['email'], $user['display_name'], $resetLink);
+            } catch (Throwable $e) {
+                error_log('Mailer error: ' . $e->getMessage());
+            }
+
             jsonResponse(['success' => true, 'message' => 'If an account exists with this email, a password reset link has been sent.']);
+        } catch (Throwable $e) {
+            jsonError('Forgot password error: ' . $e->getMessage(), 500);
         }
-
-        // Generate secure reset token
-        $resetToken = bin2hex(random_bytes(32));
-        $resetExpires = date('Y-m-d H:i:s', strtotime('+1 hour'));
-
-        $upd = $db->prepare('UPDATE users SET reset_token = :token, reset_expires = :expires WHERE id = :id');
-        $upd->execute(['token' => $resetToken, 'expires' => $resetExpires, 'id' => $user['id']]);
-
-        $resetLink = (getenv('APP_URL') ?: 'https://chat.markanm.com') . '/reset-password?token=' . $resetToken;
-
-        Mailer::sendPasswordResetEmail($user['email'], $user['display_name'], $resetLink);
-
-        jsonResponse(['success' => true, 'message' => 'If an account exists with this email, a password reset link has been sent.']);
     }
 
     /**
