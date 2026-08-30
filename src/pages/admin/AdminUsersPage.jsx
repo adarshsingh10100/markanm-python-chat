@@ -72,6 +72,7 @@ export function AdminUsersPage() {
         addToast(res.message, 'success');
         if (res.token) {
           localStorage.setItem('markanm_token', res.token);
+          localStorage.setItem('markanm_impersonating', 'true');
           window.location.href = '/chat';
           return;
         }
