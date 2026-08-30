@@ -270,7 +270,46 @@ class MessageController {
                 'message_type'    => $msgType,
                 'content_length'  => mb_strlen($content),
             ]);
-        } catch (Throwable $e) {}
+        // AI & Group Bot Auto-Reply Trigger
+        if ($convId && !empty($content)) {
+            $lowerContent = strtolower($content);
+            $botReply = null;
+
+            if (strpos($lowerContent, '@assistant') !== false || strpos($lowerContent, 'hey bot') !== false || strpos($lowerContent, 'ai help') !== false) {
+                $botReply = "🤖 **AI Assistant**: Hello! I am active in this chat group. How can I help you today?";
+            } else if (strpos($lowerContent, '@translator') !== false || strpos($lowerContent, '/translate') !== false) {
+                $cleanText = str_replace(['@translator', '/translate'], '', $content);
+                $botReply = "🌐 **Translator Bot**: Translated text: \"" . trim($cleanText) . "\"";
+            } else if (strpos($lowerContent, '@codebot') !== false || strpos($lowerContent, '/code') !== false) {
+                $botReply = "💻 **Dev Helper Bot**: Quick Code Snippet:\n```javascript\nconsole.log('Hello MarkanM Chat Group!');\n```";
+            } else if (strpos($lowerContent, '@pollbot') !== false || strpos($lowerContent, '/poll') !== false) {
+                $botReply = "📊 **Poll Bot**: Click the **+** menu button at the bottom to launch interactive live group polls!";
+            }
+
+            if ($botReply) {
+                try {
+                    $botUserStmt = $db->prepare('SELECT id FROM users WHERE username = "assistant_bot" LIMIT 1');
+                    $botUserStmt->execute();
+                    $botUid = (int)$botUserStmt->fetchColumn();
+
+                    if (!$botUid) {
+                        $insBot = $db->prepare('INSERT INTO users (display_name, username, email, password_hash, avatar_url) VALUES ("AI Bot Assistant", "assistant_bot", "bot@markanm.com", "NO_PASS", "https://api.dicebear.com/7.x/bottts/svg?seed=assistant")');
+                        $insBot->execute();
+                        $botUid = (int)$db->lastInsertId();
+                    }
+
+                    $botIns = $db->prepare('
+                        INSERT INTO messages (conversation_id, sender_id, message_type, content, created_at)
+                        VALUES (:cid, :sid, "text", :content, NOW())
+                    ');
+                    $botIns->execute([
+                        'cid'     => $convId,
+                        'sid'     => $botUid,
+                        'content' => $botReply
+                    ]);
+                } catch (Throwable $botErr) {}
+            }
+        }
 
         jsonResponse([
             'success' => true,

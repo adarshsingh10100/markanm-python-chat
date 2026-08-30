@@ -71,6 +71,7 @@ export function ChatPage() {
   const [stagedImageFile, setStagedImageFile] = useState(null);
   const [stagedImagePreviewUrl, setStagedImagePreviewUrl] = useState(null);
   const [isImageConfirmOpen, setIsImageConfirmOpen] = useState(false);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
 
   const touchStartRef = useRef(null);
@@ -790,9 +791,20 @@ export function ChatPage() {
         <div className="p-4 border-b border-white/10 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg sm:text-xl font-bold text-white">Chats</h2>
-            <span className="text-xs font-semibold text-indigo-400 bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-500/20">
-              {conversations.length} Inbox
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateGroupOpen(true)}
+                className="btn-gradient px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md hover:scale-105 transition-all"
+                title="Create New Group Chat"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>+ Group</span>
+              </button>
+              <span className="text-xs font-semibold text-indigo-400 bg-indigo-950/60 px-2.5 py-1 rounded-full border border-indigo-500/20">
+                {conversations.length}
+              </span>
+            </div>
           </div>
 
           <div className="relative">
@@ -841,7 +853,14 @@ export function ChatPage() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
-                      <h4 className="text-xs sm:text-sm font-bold text-white truncate">{title}</h4>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate">{title}</h4>
+                        {conv.type === 'group' && (
+                          <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 text-[9px] font-extrabold rounded-md border border-indigo-500/30 shrink-0">
+                            GROUP
+                          </span>
+                        )}
+                      </div>
                       {conv.last_message_at && (
                         <span className="text-[10px] text-gray-400 shrink-0 font-mono">
                           {formatTime(conv.last_message_at, userTimezone)}
@@ -1612,6 +1631,10 @@ export function ChatPage() {
         file={stagedImageFile}
         imagePreviewUrl={stagedImagePreviewUrl}
         onConfirmSend={executeConfirmedImageSend}
+      />
+      <CreateGroupModal
+        isOpen={isCreateGroupOpen}
+        onClose={() => setIsCreateGroupOpen(false)}
       />
     </div>
   );

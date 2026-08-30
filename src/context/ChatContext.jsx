@@ -21,8 +21,8 @@ export function ChatProvider({ children }) {
   const activeConvIdRef = useRef(activeConversationId);
   activeConvIdRef.current = activeConversationId;
 
-  // Load conversation list
-  const fetchConversations = useCallback(async (silent = false) => {
+  // Load conversation list (silent by default for zero toast pollution on background polling)
+  const fetchConversations = useCallback(async (silent = true) => {
     if (!user) return;
     if (!silent) setLoadingConversations(true);
 
