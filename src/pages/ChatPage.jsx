@@ -105,9 +105,13 @@ export function ChatPage() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
+  const isUploadingImageRef = useRef(false);
+
   const handleImageSelect = async (file) => {
-    if (!file) return;
+    if (!file || isUploadingImageRef.current) return;
+    isUploadingImageRef.current = true;
     addToast('Uploading image...', 'info');
+
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -117,14 +121,23 @@ export function ChatPage() {
       if (uploaded && uploaded.url) {
         handleSendMessage(null, 'image', uploaded.url);
         addToast('Image uploaded & sent!', 'success');
+      } else {
+        throw new Error('No URL returned from server');
       }
     } catch (err) {
+      // Fallback: Convert to Base64 data URL
       const reader = new FileReader();
       reader.onload = (evt) => {
-        handleSendMessage(null, 'image', evt.target.result);
-        addToast('Image sent!', 'success');
+        if (evt.target?.result) {
+          handleSendMessage(null, 'image', evt.target.result);
+          addToast('Image sent!', 'success');
+        }
       };
       reader.readAsDataURL(file);
+    } finally {
+      setTimeout(() => {
+        isUploadingImageRef.current = false;
+      }, 1000);
     }
   };
 
@@ -135,6 +148,7 @@ export function ChatPage() {
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image') !== -1) {
         e.preventDefault();
+        e.stopPropagation();
         const file = items[i].getAsFile();
         if (file) {
           handleImageSelect(file);
@@ -356,12 +370,13 @@ export function ChatPage() {
     }
   };
 
-  // Ultra-Fast Live Reload Polling Strategy
+  // Ultra-Fast Live Reload & Partner Presence Polling Strategy
   useEffect(() => {
     if (targetConvId) {
       const interval = setInterval(() => {
         if (!document.hidden) {
           loadMessages(targetConvId);
+          fetchConversations();
         }
       }, 2000);
       return () => clearInterval(interval);
@@ -619,11 +634,21 @@ export function ChatPage() {
       );
     }
 
+    // Helper: Resolve relative backend URLs to absolute origin URLs
+    const getFullMediaUrl = (urlStr) => {
+      if (!urlStr) return '';
+      if (urlStr.startsWith('http://') || urlStr.startsWith('https://') || urlStr.startsWith('data:') || urlStr.startsWith('blob:')) {
+        return urlStr;
+      }
+      const cleanPath = urlStr.startsWith('/') ? urlStr : '/' + urlStr;
+      return `${window.location.origin}${cleanPath}`;
+    };
+
     // 2. GIF Message
     if (msg.type === 'gif' || text.endsWith('.gif') || text.includes('giphy.com') || text.includes('tenor.com')) {
       return (
         <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm bg-black/40 my-1">
-          <img src={text} alt="GIF" referrerPolicy="no-referrer" className="w-full h-auto max-h-72 object-cover" />
+          <img src={getFullMediaUrl(text)} alt="GIF" referrerPolicy="no-referrer" className="w-full h-auto max-h-72 object-cover" />
         </div>
       );
     }
@@ -632,7 +657,7 @@ export function ChatPage() {
     if (msg.type === 'sticker' || text.includes('twemoji') || text.includes('iconify') || text.includes('/stickers/')) {
       return (
         <div className="p-1 my-1">
-          <img src={text} alt="Sticker" referrerPolicy="no-referrer" className="w-28 h-28 sm:w-36 sm:h-36 object-contain drop-shadow-md" />
+          <img src={getFullMediaUrl(text)} alt="Sticker" referrerPolicy="no-referrer" className="w-28 h-28 sm:w-36 sm:h-36 object-contain drop-shadow-md" />
         </div>
       );
     }
@@ -650,18 +675,15 @@ export function ChatPage() {
 
     // 4. Image Attachment or Direct Image URL
     if (msg.type === 'image' || isImageSrc(text)) {
+      const fullUrl = getFullMediaUrl(text);
       return (
         <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg max-w-xs sm:max-w-sm my-1 relative group/img">
           <img
-            src={text}
+            src={fullUrl}
             alt="Image Attachment"
             referrerPolicy="no-referrer"
             className="w-full h-auto max-h-80 object-cover cursor-pointer hover:opacity-95 transition-opacity"
-            onClick={() => window.open(text, '_blank')}
-            onError={(e) => {
-              e.target.onerror = null;
-              e.target.src = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80';
-            }}
+            onClick={() => window.open(fullUrl, '_blank')}
           />
         </div>
       );
