@@ -460,32 +460,36 @@ class MessageController {
      * POST /api/conversations/{id}/typing
      */
     public static function updateTypingStatus(string $identifier): void {
-        $convId = self::resolveConvId($identifier);
-        $currentUser = AuthMiddleware::authenticate();
-        $body = getRequestBody();
-        $isTyping = !empty($body['is_typing']);
+        try {
+            $convId = self::resolveConvId($identifier);
+            $currentUser = AuthMiddleware::authenticate();
+            $body = getRequestBody();
+            $isTyping = !empty($body['is_typing']);
 
-        $db = Database::getConnection();
+            $db = Database::getConnection();
 
-        // Privacy check: If user turned off typing indicator, do not update typing status
-        $userStmt = $db->prepare('SELECT privacy_settings FROM users WHERE id = :uid LIMIT 1');
-        $userStmt->execute(['uid' => $currentUser['id']]);
-        $uRow = $userStmt->fetch();
-        if ($uRow && !empty($uRow['privacy_settings'])) {
-            $privacy = json_decode($uRow['privacy_settings'], true);
-            if (($privacy['typing_status'] ?? 'everyone') === 'nobody') {
-                $isTyping = false;
+            // Privacy check: If user turned off typing indicator, do not update typing status
+            $userStmt = $db->prepare('SELECT privacy_settings FROM users WHERE id = :uid LIMIT 1');
+            $userStmt->execute(['uid' => $currentUser['id']]);
+            $uRow = $userStmt->fetch();
+            if ($uRow && !empty($uRow['privacy_settings'])) {
+                $privacy = json_decode($uRow['privacy_settings'], true);
+                if (($privacy['typing_status'] ?? 'everyone') === 'nobody') {
+                    $isTyping = false;
+                }
             }
+
+            $targetConv = $isTyping ? $convId : null;
+
+            $stmt = $db->prepare('
+                INSERT INTO user_presence (user_id, status, typing_conversation_id, typing_updated_at)
+                VALUES (:uid, "online", :cid1, NOW())
+                ON DUPLICATE KEY UPDATE status = "online", typing_conversation_id = :cid2, typing_updated_at = NOW()
+            ');
+            $stmt->execute(['uid' => $currentUser['id'], 'cid1' => $targetConv, 'cid2' => $targetConv]);
+        } catch (Throwable $e) {
+            error_log("Typing update error: " . $e->getMessage());
         }
-
-        $targetConv = $isTyping ? $convId : null;
-
-        $stmt = $db->prepare('
-            INSERT INTO user_presence (user_id, status, typing_conversation_id, typing_updated_at)
-            VALUES (:uid, "online", :cid1, NOW())
-            ON DUPLICATE KEY UPDATE typing_conversation_id = :cid2, typing_updated_at = NOW()
-        ');
-        $stmt->execute(['uid' => $currentUser['id'], 'cid1' => $targetConv, 'cid2' => $targetConv]);
 
         jsonResponse(['success' => true]);
     }

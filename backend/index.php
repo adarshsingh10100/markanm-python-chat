@@ -83,7 +83,29 @@ foreach ($basePaths as $bp) {
         break;
     }
 }
-$path = '/' . ltrim($path, '/');
+// Serve uploaded branding assets directly if request matches /uploads/...
+if (strpos($path, '/uploads/') === 0 || strpos($requestUri, '/uploads/') !== false) {
+    $cleanUploadPath = preg_replace('#^.*?/uploads/#', '/uploads/', $requestUri);
+    $filePath = __DIR__ . $cleanUploadPath;
+    if (file_exists($filePath) && !is_dir($filePath)) {
+        $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $mimeTypes = [
+            'png'  => 'image/png',
+            'jpg'  => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'gif'  => 'image/gif',
+            'webp' => 'image/webp',
+            'svg'  => 'image/svg+xml',
+            'ico'  => 'image/x-icon',
+        ];
+        $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
+        header("Content-Type: {$mime}");
+        header("Content-Length: " . filesize($filePath));
+        header("Cache-Control: public, max-age=31536000");
+        readfile($filePath);
+        exit;
+    }
+}
 
 // Handle Route Matching
 try {
