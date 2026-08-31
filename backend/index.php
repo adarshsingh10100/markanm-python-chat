@@ -509,12 +509,12 @@ try {
         AdminController::rotateAiKey();
     } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)characters/([0-9]+)/(disable|enable)$#', $path, $matches)) {
         AdminController::toggleCharacterStatus((int)$matches[1], $matches[2]);
-    } else if ($method === 'GET' && ($path === '/admin/api/branding' || $path === '/admin/branding' || $path === '/public/branding' || $path === '/api/public/branding')) {
+    } else if ($method === 'GET' && preg_match('#^/(?:admin/api/|admin/|api/public/|public/)?branding$#', $path)) {
         AdminController::getBrandingSettings();
-    } else if ($method === 'POST' && ($path === '/admin/api/branding' || $path === '/admin/branding')) {
-        AdminController::updateBrandingSettings();
-    } else if ($method === 'POST' && ($path === '/admin/api/branding/upload' || $path === '/admin/branding/upload')) {
+    } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)?branding/upload$#', $path)) {
         AdminController::uploadBrandingAsset();
+    } else if ($method === 'POST' && preg_match('#^/(?:admin/api/|admin/)?branding$#', $path)) {
+        AdminController::updateBrandingSettings();
     }
 
     else {

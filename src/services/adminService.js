@@ -90,18 +90,9 @@ export const adminService = {
   async uploadBrandingAsset(file) {
     const formData = new FormData();
     formData.append('file', file);
-    const token = localStorage.getItem('markanm_token');
-    const res = await fetch('/admin/api/branding/upload', {
+    return request('/admin/branding/upload', {
       method: 'POST',
-      headers: {
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
       body: formData
     });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.message || 'Upload failed');
-    }
-    return data;
   }
 };
