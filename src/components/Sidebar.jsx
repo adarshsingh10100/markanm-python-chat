@@ -65,20 +65,24 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
   };
 
   return (
-    <aside className={`h-full glass-panel flex flex-col justify-between p-3 border-r border-white/10 shrink-0 select-none z-20 transition-all duration-300 overflow-hidden ${
-      isCollapsed ? 'w-16' : 'w-16 md:w-64'
+    <aside className={`h-full glass-panel flex flex-col justify-between border-r border-white/10 shrink-0 select-none z-20 transition-all duration-300 overflow-x-hidden ${
+      isCollapsed ? 'w-16 p-2' : 'w-16 md:w-64 p-3'
     }`}>
       {/* Scrollable Nav Section */}
-      <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar pr-0.5 flex flex-col gap-2">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 scrollbar-none flex flex-col gap-2">
         {/* Brand Header & Toggle */}
-        <div className="flex items-center justify-between px-2 py-3 mb-2 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+        <div className={`flex items-center ${isCollapsed ? 'flex-col gap-2 justify-center py-2' : 'justify-between px-2 py-3'} mb-2 shrink-0 border-b border-white/5 pb-2`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              onClick={() => navigate('/dashboard')}
+              className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0 cursor-pointer hover:scale-105 transition-transform"
+              title="MarkanM Chat"
+            >
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             {!isCollapsed && (
-              <div className="hidden md:block">
-                <h1 className="font-bold text-lg leading-none bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-indigo-400">
+              <div className="hidden md:block min-w-0">
+                <h1 className="font-bold text-lg leading-none bg-clip-text text-transparent bg-gradient-to-r from-white via-indigo-200 to-indigo-400 truncate">
                   MarkanM
                 </h1>
                 <span className="text-[10px] font-semibold text-indigo-400 tracking-wider uppercase">Chat</span>
@@ -89,7 +93,7 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
           <button
             type="button"
             onClick={toggleCollapse}
-            className="p-1.5 text-gray-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors shrink-0"
+            className="p-1.5 text-gray-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors shrink-0 flex items-center justify-center"
             title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
             {isCollapsed ? <PanelLeft className="w-5 h-5 text-indigo-400" /> : <PanelLeftClose className="w-5 h-5 hidden md:block" />}
@@ -97,15 +101,16 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-1 w-full overflow-x-hidden">
           {navItems.map(item => {
             const Icon = item.icon;
             return (
               <NavLink
                 key={item.path}
                 to={item.path}
+                title={item.label}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 group relative ${
+                  `flex items-center ${isCollapsed ? 'justify-center px-0 py-3' : 'gap-3 px-3 py-3'} rounded-xl transition-all duration-200 group relative w-full ${
                     isActive
                       ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 font-semibold'
                       : 'text-gray-400 hover:text-white hover:bg-white/5'
@@ -113,10 +118,14 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
                 }
               >
                 <Icon className="w-5 h-5 shrink-0 group-hover:scale-110 transition-transform" />
-                {!isCollapsed && <span className="hidden md:inline text-sm">{item.label}</span>}
+                {!isCollapsed && <span className="hidden md:inline text-sm truncate">{item.label}</span>}
 
                 {Boolean(item.badge) && item.badge > 0 && (
-                  <span className="absolute right-2 md:right-3 px-2 py-0.5 text-[10px] font-bold bg-indigo-500 text-white rounded-full">
+                  <span className={`${
+                    isCollapsed
+                      ? 'absolute -top-1 -right-1 px-1.5 py-0.5 text-[9px] font-extrabold bg-indigo-500 text-white rounded-full border border-[#0B0E14]'
+                      : 'absolute right-2 md:right-3 px-2 py-0.5 text-[10px] font-bold bg-indigo-500 text-white rounded-full'
+                  }`}>
                     {item.badge > 99 ? '99+' : item.badge}
                   </span>
                 )}
@@ -128,10 +137,11 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
 
       {/* User Profile & Log Out Footer (Pinned) */}
       {user && (
-        <div className="shrink-0 pt-3 border-t border-white/10 flex flex-col gap-1.5 mt-auto">
+        <div className="shrink-0 pt-3 border-t border-white/10 flex flex-col gap-1.5 mt-auto w-full overflow-x-hidden">
           <div
             onClick={() => navigate('/profile')}
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer transition-colors"
+            title={`${user.display_name} (@${user.username})`}
+            className={`flex items-center ${isCollapsed ? 'justify-center p-1' : 'gap-3 p-2'} rounded-xl hover:bg-white/5 cursor-pointer transition-colors w-full`}
           >
             <Avatar
               src={user.avatar_url}
@@ -149,11 +159,11 @@ export function Sidebar({ unreadNotificationsCount = 0 }) {
 
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-semibold w-full"
+            className={`flex items-center ${isCollapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5'} rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs font-semibold w-full`}
             title="Log Out"
           >
             <LogOut className="w-4 h-4 shrink-0 text-red-400" />
-            {!isCollapsed && <span className="hidden md:inline text-red-300 font-bold">Log Out</span>}
+            {!isCollapsed && <span className="hidden md:inline text-red-300 font-bold truncate">Log Out</span>}
           </button>
         </div>
       )}
